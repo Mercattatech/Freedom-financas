@@ -111,5 +111,8 @@
     "vite-plugin-proxy-middleware": "^1.0.2",
     "nodemon": "^3.1.14",
     "prisma": "^5.21.1"
+  },
+  "engines": {
+    "node": "20.x"
   }
 }
