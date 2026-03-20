@@ -117,7 +117,10 @@ export default function Dashboard() {
       const newFamily = await apiClient.entities.Family.create(familyData);
       return newFamily;
     },
-    onSuccess: () => {
+    onSuccess: (newFamily) => {
+      if (newFamily && newFamily.id) {
+        localStorage.setItem('selectedFamilyId', newFamily.id);
+      }
       queryClient.invalidateQueries(['families']);
       queryClient.invalidateQueries(['categories']);
       queryClient.invalidateQueries(['subcategories']);
