@@ -77,7 +77,6 @@
     "vaul": "^1.1.2",
     "zod": "^3.24.2",
     "@prisma/client": "^5.21.1",
-    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
@@ -88,9 +87,7 @@
     "resend": "^6.9.4",
     "stripe": "^20.4.1",
     "yahoo-finance2": "^3.13.2",
-    "cors": "^2.8.6",
-    "nodemon": "^3.1.14",
-    "prisma": "^5.21.1"
+    "cors": "^2.8.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
@@ -106,12 +103,13 @@
     "eslint-plugin-react-refresh": "^0.4.18",
     "eslint-plugin-unused-imports": "^4.3.0",
     "globals": "^15.14.0",
-    "http-proxy-middleware": "^3.0.5",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^6.1.0",
     "vite-plugin-proxy": "^0.5.0",
-    "vite-plugin-proxy-middleware": "^1.0.2"
+    "vite-plugin-proxy-middleware": "^1.0.2",
+    "nodemon": "^3.1.14",
+    "prisma": "^5.21.1"
   }
 }
