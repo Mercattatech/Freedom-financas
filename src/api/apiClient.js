@@ -1,8 +1,9 @@
 // @ts-nocheck
 import { appParams } from '@/lib/app-params';
 
-// Em dev usa porta 3000 local, em prod usa o que a KingHost prover via vite config
-const API_URL = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3000/api`;
+// Em dev usa porta 3000 local, em prod usa serverless Vercel (/api)
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const API_URL = import.meta.env.VITE_API_URL || (isLocal ? `http://${window.location.hostname}:3000/api` : '/api');
 
 const apiFetch = async (endpoint, options = {}) => {
   const token = localStorage.getItem('freedom_access_token');
