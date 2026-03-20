@@ -1,0 +1,363 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  full_name    String?
+  password     String
+  is_verified  Boolean  @default(false)
+  disabled     Boolean  @default(false)
+  role         String   @default("user")
+  otpCode      String?
+  must_change_password Boolean @default(false)
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+  
+  // Relations
+  families     Family[] @relation("FamilyCreator")
+}
+
+model Family {
+  id           String   @id @default(uuid())
+  nome_familia String
+  tipo_familia String   @default("SEM_FILHOS")
+  moeda        String   @default("BRL")
+  created_by   String   
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  creator      User     @relation("FamilyCreator", fields: [created_by], references: [email])
+
+  // Relations
+  categories        Category[]
+  financialMonths   FinancialMonth[]
+  goals             Goal[]
+  debts             Debt[]
+  recurringExpenses RecurringExpense[]
+  investmentBoxes   InvestmentBox[]
+  stockInvestments  StockInvestment[]
+  stockAlerts       StockAlert[]
+}
+
+model Category {
+  id           String   @id @default(uuid())
+  nome         String
+  tipo         String   // "RECEITA" | "DESPESA"
+  cor          String?
+  icone        String?
+  ativo        Boolean  @default(true)
+  family_id    String
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  family       Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  subcategories Subcategory[]
+  incomes      Income[]
+  expenses     Expense[]
+  budgets      Budget[]
+}
+
+model Subcategory {
+  id           String   @id @default(uuid())
+  nome         String
+  ativo        Boolean  @default(true)
+  category_id  String
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  category     Category  @relation(fields: [category_id], references: [id], onDelete: Cascade)
+  incomes      Income[]
+  expenses     Expense[]
+}
+
+model FinancialMonth {
+  id           String   @id @default(uuid())
+  competencia  String   // equivalent to 'month'
+  status       String   @default("ABERTO")
+  renda_total_calculada Float @default(0)
+  family_id    String
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  family       Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  incomes      Income[]
+  expenses     Expense[]
+  budgets      Budget[]
+
+  @@unique([family_id, competencia])
+}
+
+model Income {
+  id               String   @id @default(uuid())
+  descricao        String?
+  valor            Float
+  data_recebimento String
+  tipo             String?
+  recorrente       Boolean  @default(false)
+  ativo            Boolean  @default(true)
+  month_id         String
+  category_id      String?
+  subcategory_id   String?
+  family_id        String?
+  created_date     DateTime @default(now())
+  updated_date     DateTime @updatedAt
+
+  month          FinancialMonth @relation(fields: [month_id], references: [id], onDelete: Cascade)
+  category       Category?      @relation(fields: [category_id], references: [id])
+  subcategory    Subcategory?   @relation(fields: [subcategory_id], references: [id])
+}
+
+model Expense {
+  id              String   @id @default(uuid())
+  descricao       String
+  valor           Float
+  data            String
+  forma_pagamento String?
+  recorrente      Boolean  @default(false)
+  tags            String?  // JSON string or comma separated
+  notes           String?
+  month_id        String
+  category_id     String?
+  subcategory_id  String?
+  family_id       String?
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  month          FinancialMonth @relation(fields: [month_id], references: [id], onDelete: Cascade)
+  category       Category?      @relation(fields: [category_id], references: [id])
+  subcategory    Subcategory?   @relation(fields: [subcategory_id], references: [id])
+}
+
+model Budget {
+  id                String   @id @default(uuid())
+  tipo_orcamento    String   @default("VALOR_FIXO")
+  valor_orcado      Float?
+  percentual_orcado Float?   @default(0)
+  month_id          String
+  category_id       String
+  family_id         String?
+  created_date      DateTime @default(now())
+  updated_date   DateTime @updatedAt
+
+  month          FinancialMonth @relation(fields: [month_id], references: [id], onDelete: Cascade)
+  category       Category       @relation(fields: [category_id], references: [id])
+
+  @@unique([month_id, category_id])
+}
+
+model Goal {
+  id           String   @id @default(uuid())
+  nome         String
+  tipo         String
+  valor_alvo   Float
+  valor_atual  Float    @default(0)
+  prazo        String?
+  descricao    String?
+  ativo        Boolean  @default(true)
+  concluida    Boolean  @default(false)
+  family_id    String
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  family       Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+}
+
+model Debt {
+  id                    String   @id @default(uuid())
+  nome_divida           String
+  credor                String?
+  tipo                  String   @default("OUTROS")
+  saldo_inicial         Float    @default(0)
+  saldo_atual           Float    @default(0)
+  juros_mensal_percent  Float?
+  data_inicio           String?
+  vencimento_dia        Int?
+  status                String   @default("ATIVA")
+  family_id             String
+  created_date          DateTime @default(now())
+  updated_date          DateTime @updatedAt
+
+  family                Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  payments              DebtPayment[]
+}
+
+model DebtPayment {
+  id              String   @id @default(uuid())
+  valor_pagamento Float
+  data_pagamento  String
+  month_id        String?
+  debt_id         String
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  debt            Debt     @relation(fields: [debt_id], references: [id], onDelete: Cascade)
+}
+
+model RecurringExpense {
+  id              String   @id @default(uuid())
+  descricao       String
+  valor           Float
+  category_id     String
+  subcategory_id  String?
+  forma_pagamento String?
+  dia_vencimento  Int
+  ativo           Boolean  @default(true)
+  family_id       String
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+}
+
+model InvestmentBox {
+  id               String   @id @default(uuid())
+  nome             String
+  objetivo         String?
+  valor_inicial    Float    @default(0)
+  saldo_atual      Float    @default(0)
+  tipo_rendimento  String   @default("PERCENTUAL_MENSAL")
+  taxa_mensal      Float?
+  taxa_anual_cdi   Float?
+  cor              String?
+  ativo            Boolean  @default(true)
+  family_id        String
+  created_date     DateTime @default(now())
+  updated_date     DateTime @updatedAt
+
+  family           Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  deposits         InvestmentDeposit[]
+}
+
+model InvestmentDeposit {
+  id           String   @id @default(uuid())
+  valor        Float
+  data         String
+  descricao    String?
+  tipo         String   @default("APORTE")
+  box_id       String
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  box          InvestmentBox @relation(fields: [box_id], references: [id], onDelete: Cascade)
+}
+
+model StockInvestment {
+  id                    String   @id @default(uuid())
+  ticker                String
+  nome_empresa          String?
+  tipo                  String
+  quantidade            Float
+  preco_medio           Float
+  preco_atual           Float?
+  data_primeira_compra  String?
+  setor                 String?
+  ativo                 Boolean  @default(true)
+  family_id             String
+  created_date          DateTime @default(now())
+  updated_date          DateTime @updatedAt
+
+  family                Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+}
+
+model StockAlert {
+  id              String   @id @default(uuid())
+  ticker          String
+  target_price    Float
+  alert_type      String   // "PISO" | "TETO"
+  is_active       Boolean  @default(true)
+  family_id       String
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+}
+
+model UserAccess {
+  id                     String   @id @default(uuid())
+  user_email             String   @unique
+  user_name              String?
+  plan_id                String?
+  plan_nome              String?
+  status                 String   @default("ATIVO") // ATIVO, TRIAL, SUSPENSO, CANCELADO
+  data_inicio            String?
+  data_expiracao         String?
+  limite_familias        Int      @default(1)
+  observacoes            String?  @db.Text
+  origem                 String   @default("MANUAL")
+  stripe_subscription_id String?
+  stripe_customer_id     String?
+  created_date           DateTime @default(now())
+  updated_date           DateTime @updatedAt
+}
+
+model Plan {
+  id                   String   @id @default(uuid())
+  nome                 String
+  descricao            String?
+  tipo                 String   @default("MENSAL")
+  preco                Float
+  preco_original       Float?
+  features             String?  @db.Text
+  destaque             Boolean  @default(false)
+  badge                String?
+  upsell_texto         String?
+  upsell_price_id      String?
+  limite_familias      Int      @default(1)
+  cor                  String?
+  ordem                Int      @default(0)
+  ativo                Boolean  @default(true)
+  stripe_price_id      String?
+  created_date         DateTime @default(now())
+  updated_date         DateTime @updatedAt
+}
+
+model LandingCms {
+  id                   String   @id @default("singleton")
+  logo_url             String?
+  hero_image_desktop   String?
+  hero_image_mobile    String?
+  problema_image       String?
+  hero_badge           String?
+  hero_titulo          String?
+  hero_subtitulo       String?
+  hero_cta             String?
+  hero_video_url       String?
+  hero_stat1_n         String?
+  hero_stat1_l         String?
+  hero_stat2_n         String?
+  hero_stat2_l         String?
+  hero_stat3_n         String?
+  hero_stat3_l         String?
+
+  problema_titulo      String?
+  problema_subtitulo   String?
+
+  features_titulo      String?
+  features_subtitulo   String?
+
+  depoimentos_titulo   String?
+  depoimentos_subtitulo String?
+  depoimentos_json     String?   @db.Text
+
+  planos_titulo        String?
+  planos_subtitulo     String?
+
+  faq_titulo           String?
+  faqs_json            String?   @db.Text
+
+  cta_final_titulo     String?
+  cta_final_subtitulo  String?
+  cta_final_btn        String?
+
+  footer_texto         String?
+  
+  created_date         DateTime @default(now())
+  updated_date         DateTime @updatedAt
+}

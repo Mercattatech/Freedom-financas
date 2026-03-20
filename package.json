@@ -9,10 +9,10 @@
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "prisma generate --schema=./backend/prisma/schema.prisma"
   },
   "dependencies": {
-
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -75,7 +75,22 @@
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.171.0",
     "vaul": "^1.1.2",
-    "zod": "^3.24.2"
+    "zod": "^3.24.2",
+    "@prisma/client": "^5.21.1",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "http-proxy-middleware": "^3.0.5",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "mysql2": "^3.20.0",
+    "resend": "^6.9.4",
+    "stripe": "^20.4.1",
+    "yahoo-finance2": "^3.13.2",
+    "cors": "^2.8.6",
+    "nodemon": "^3.1.14",
+    "prisma": "^5.21.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",
