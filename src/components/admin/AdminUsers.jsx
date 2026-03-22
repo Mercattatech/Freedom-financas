@@ -7,11 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Plus, Trash2, Pencil, Check, X, Loader2, Users, Search,
-  UserCheck, UserX, Clock, Gift, ExternalLink, Mail, AlertCircle
+  UserCheck, UserX, Clock, ExternalLink, Mail, AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 const STATUS_CONFIG = {
   ATIVO: { label: 'Ativo', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Trash2, Pencil, Check, X, Zap, RefreshCw, Star, Loader2,
+  Plus, Trash2, Pencil, Check, X, RefreshCw, Loader2,
   DollarSign, Tag, ToggleLeft, ToggleRight, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';

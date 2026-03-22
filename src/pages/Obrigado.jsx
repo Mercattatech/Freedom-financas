@@ -1,4 +1,4 @@
-import { CheckCircle2, ArrowRight, Shield, Zap } from 'lucide-react';
+import { CheckCircle2, ArrowRight, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { createPageUrl } from '@/utils';
 

@@ -7,7 +7,7 @@ import { ptBR } from 'date-fns/locale';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Trash2, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Pencil, Check, X, SlidersHorizontal, Repeat } from "lucide-react";
+import { Loader2, Plus, Trash2, TrendingUp, TrendingDown, ChevronLeft, ChevronRight, Pencil, Check, X, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 

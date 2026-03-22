@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/api/apiClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, ShieldAlert, Save, Eye, BarChart3, MessageSquare, HelpCircle, DollarSign, Tag, Plus, Check, X, RefreshCw, Pencil, Trash2, ToggleLeft, ToggleRight, ExternalLink, Upload } from 'lucide-react';
 import AdminUsers from '../components/admin/AdminUsers';
+import AdminAccounts from '../components/admin/AdminAccounts';
 import AdminPayments from '../components/admin/AdminPayments';
 import AdminFamilies from '../components/admin/AdminFamilies';
-import AdminAccounts from '../components/admin/AdminAccounts';
 import { toast } from 'sonner';
 
 const TABS = [
@@ -457,6 +456,7 @@ export default function Admin() {
         <main className="ml-64 flex-1 min-h-screen bg-slate-950 p-8">
           {tab === 'payments' && <AdminPayments />}
           {tab === 'users' && <AdminUsers />}
+          {tab === 'accounts' && <AdminAccounts />}
           {tab === 'families' && <AdminFamilies />}
           {tab === 'plans' && <PlansEditor />}
           {tab === 'cms' && <CMSEditor />}

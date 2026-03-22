@@ -2,7 +2,7 @@ import React from 'react';
 import { Card } from "@/components/ui/card";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { ArrowDownLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function RecentTransactions({ expenses, incomes, categories }) {

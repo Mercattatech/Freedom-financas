@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, Receipt, PieChart, Target, PiggyBank, CreditCard, TrendingUp, HelpCircle, ChevronDown, Landmark } from 'lucide-react';
+import { BookOpen, Receipt, PieChart, Target, PiggyBank, HelpCircle, ChevronDown, Landmark } from 'lucide-react';
 
 const helpSections = [
   {

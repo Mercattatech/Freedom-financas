@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   CheckCircle2, Shield, TrendingUp, PiggyBank, BarChart3, CreditCard,
   Star, ArrowRight, Zap, Users, Target, ChevronDown, ChevronUp, Loader2,
-  Play, Check, MessageCircle
+  Play, Check
 } from 'lucide-react';
 import { toast } from 'sonner';
 

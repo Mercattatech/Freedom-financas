@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { useQuery } from '@tanstack/react-query';
-import { apiClient } from '@/api/apiClient';
 
 /**
  * Hook para verificar o acesso do usuário ao sistema.

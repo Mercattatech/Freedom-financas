@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import AccessGate from '../components/AccessGate';
 import { useUserAccess } from '../components/hooks/useUserAccess';
 import { apiClient } from '@/api/apiClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,7 +14,6 @@ import { Plus, Users, Heart, Baby, MoreVertical, Pencil, Trash2, CheckCircle } f
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-import { DEFAULT_CATEGORIES, SUBCATEGORIES_BY_FAMILY_TYPE } from '@/components/lib/DefaultCategories';
 
 const FAMILY_TYPES = [
   { value: 'SEM_FILHOS', label: 'Sem Filhos', icon: Heart, description: 'Casal sem dependentes' },

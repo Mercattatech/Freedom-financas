@@ -6,8 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Search, CreditCard, TrendingUp, Users, ExternalLink, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 const STATUS_CONFIG = {
   ATIVO: { label: 'Ativo', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
