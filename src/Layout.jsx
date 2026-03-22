@@ -2,7 +2,10 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { useAuth } from '@/lib/AuthContext';
-import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Repeat, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2 } from 'lucide-react';
+import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Repeat, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, CheckCircle } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { apiClient } from '@/api/apiClient';
 import { toast } from 'sonner';
 
@@ -58,6 +61,8 @@ function ForcePasswordChangeModal({ onPasswordChanged }) {
 export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, logout, checkAppState } = useAuth();
+  const { theme, setTheme } = useTheme();
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const navItems = [
     { name: 'Dashboard', icon: Home, path: 'Dashboard' },
@@ -80,9 +85,9 @@ export default function Layout({ children, currentPageName }) {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
       {/* Top Navigation */}
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <nav className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
@@ -149,6 +154,22 @@ export default function Layout({ children, currentPageName }) {
 
             {/* User Info / Logout */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-amber-400 dark:hover:bg-slate-800 transition-all hidden sm:flex"
+                title="Alternar Tema Escuro"
+              >
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </button>
+              
+              <Link
+                to={createPageUrl('HelpCenter')}
+                className={`p-2 hover:text-emerald-600 hover:bg-emerald-50 transition-all rounded-full border shadow-sm hidden sm:flex ${currentPageName === 'HelpCenter' ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-700' : 'text-slate-400 border-slate-200 dark:border-slate-700'}`}
+                title="Como usar o sistema"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </Link>
+
               {user && (
                 <div className="hidden sm:flex items-center gap-3">
                   <div className="text-right">
@@ -245,12 +266,29 @@ export default function Layout({ children, currentPageName }) {
             <Menu className="w-5 h-5" />
             <span className="text-[10px] font-medium">Mais</span>
           </button>
+          
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg text-slate-500"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <span className="text-[10px] font-medium">Tema</span>
+          </button>
+          
+          <Link
+            to={createPageUrl('HelpCenter')}
+            className={`flex flex-col items-center gap-1 px-2 py-1.5 rounded-lg font-bold transition-all ${currentPageName === 'HelpCenter' ? 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30' : 'text-emerald-600'}`}
+          >
+            <HelpCircle className="w-5 h-5" />
+            <span className="text-[10px] font-medium">Ajuda</span>
+          </Link>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="pb-20 lg:pb-0">
-        {children}
+      <main className="pb-20 lg:pb-0 relative z-0">
+        <div className="dark:text-slate-100">
+          {children}
+        </div>
       </main>
 
       {/* Admin acessível via rota /Admin apenas */}

@@ -20,7 +20,8 @@ const ENDPOINT_TO_PRISMA_MODEL = {
   'useraccesses': 'userAccess',
   'users': 'user',
   'plans': 'plan',
-  'landingcmss': 'landingCms'
+  'landingcmss': 'landingCms',
+  'assets': 'asset'
 };
 
 function createGenericRouter() {
@@ -51,11 +52,60 @@ function createGenericRouter() {
         return res.json({ success: true });
       }
 
+      if (req.method === 'GET' || req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
+        const globalEndpoints = ['plans', 'landingcmss', 'users', 'useraccesses'];
+        
+        // === GLOBAL SECURITY POLICY FOR NON-ADMINS ===
+        if (req.user.role !== 'admin' && !globalEndpoints.includes(entityParam)) {
+          const myFamilies = await prisma.family.findMany({ where: { created_by: req.user.email }, select: { id: true } });
+          const myFamilyIds = myFamilies.map(f => f.id);
+
+          // Block POST/PUT if trying to mutate someone else's family
+          if (['POST', 'PUT'].includes(req.method) && req.body && req.body.family_id) {
+             if (!myFamilyIds.includes(req.body.family_id)) {
+                return res.status(403).json({ error: "Acesso Negado. Você não é dono desta família." });
+             }
+          }
+          
+          if (req.method === 'GET') {
+             const parsedQuery = { ...req.query };
+             if (parsedQuery.ativo === 'true') parsedQuery.ativo = true;
+             if (parsedQuery.ativo === 'false') parsedQuery.ativo = false;
+
+             if (entityParam === 'investmentdeposits') {
+                const myBoxes = await prisma.investmentBox.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
+                parsedQuery.box_id = { in: myBoxes.map(b => b.id) };
+             } else if (entityParam === 'debtpayments') {
+                const myDebts = await prisma.debt.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
+                parsedQuery.debt_id = { in: myDebts.map(d => d.id) };
+             } else {
+                // Scope by family_id
+                if (parsedQuery.family_id) {
+                   if (!myFamilyIds.includes(parsedQuery.family_id)) {
+                      return res.json([]); // Return empty if trying to spy
+                   }
+                } else {
+                   parsedQuery.family_id = { in: myFamilyIds };
+                }
+             }
+
+             const items = await model.findMany({ where: parsedQuery });
+             return res.json(items);
+          }
+        }
+      }
+
       if (req.method === 'GET') {
         const parsedQuery = { ...req.query };
         if (parsedQuery.ativo === 'true') parsedQuery.ativo = true;
         if (parsedQuery.ativo === 'false') parsedQuery.ativo = false;
         
+        // For admin / global endpoints where role wasn't intercepted
+        if (req.user.role !== 'admin') {
+           if (entityParam === 'users') parsedQuery.email = req.user.email;
+           if (entityParam === 'useraccesses') parsedQuery.user_email = req.user.email;
+        }
+
         const items = await model.findMany({ where: parsedQuery });
         return res.json(items);
       }
@@ -87,6 +137,11 @@ function createGenericRouter() {
             update: req.body
           });
           return res.json(updatedItem);
+        }
+
+        if (prismaModelName === 'user' && req.body.password) {
+           const bcrypt = require('bcryptjs');
+           req.body.password = await bcrypt.hash(req.body.password, 10);
         }
 
         const updatedItem = await model.update({ where: { id: entityId }, data: req.body });

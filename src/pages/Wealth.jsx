@@ -1,38 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { apiClient } from '@/api/apiClient';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { PiggyBank, TrendingUp, Church, Gift, Wallet, AlertCircle, Calculator, Tag } from "lucide-react";
-import { motion } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Landmark, Home, Car, Wallet, Plus, Trash2, ArrowUpRight, ArrowDownRight, Scale, Coins, HardDrive } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { format } from 'date-fns';
+import { cn } from "@/lib/utils";
 
-import MonthSelector from '@/components/dashboard/MonthSelector';
-
-const PRESET_COLORS = [
-  '#10B981', '#6366F1', '#F97316', '#A855F7', '#14B8A6',
-  '#EF4444', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6'
-];
+const ASSET_TYPES = {
+  IMOVEL: { label: 'Imóvel / Terreno', icon: Home, color: '#3B82F6' },
+  VEICULO: { label: 'Veículo', icon: Car, color: '#F59E0B' },
+  DINHEIRO: { label: 'Dinheiro / Conta Corrente', icon: Wallet, color: '#10B981' },
+  RECEBIVEL: { label: 'Direito / Herança', icon: Scale, color: '#8B5CF6' },
+  OUTROS: { label: 'Outros Bens', icon: HardDrive, color: '#64748B' },
+};
 
 export default function Wealth() {
   const queryClient = useQueryClient();
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [activeTab, setActiveTab] = useState('distribution');
-  const [percentages, setPercentages] = useState({});
-
-  const [calcInitial, setCalcInitial] = useState('1000');
-  const [calcMonthly, setCalcMonthly] = useState('500');
-  const [calcRate, setCalcRate] = useState('1');
-  const [calcMonths, setCalcMonths] = useState('12');
-
-  const competencia = format(currentDate, 'yyyy-MM');
+  const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  const [newAsset, setNewAsset] = useState({ nome: '', tipo: 'IMOVEL', valor: '', descricao: '' });
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -50,382 +43,383 @@ export default function Wealth() {
     ? families.find(f => f.id === selectedFamilyId)
     : families[0];
 
-  const { data: months = [] } = useQuery({
-    queryKey: ['months', family?.id, competencia],
-    queryFn: () => apiClient.entities.FinancialMonth.filter({ family_id: family.id, competencia }),
-    enabled: !!family
+  const familyId = family?.id;
+
+  // Queries para Patrimônio
+  const { data: assets = [] } = useQuery({
+    queryKey: ['assets', familyId],
+    queryFn: () => apiClient.entities.Asset.filter({ family_id: familyId }),
+    enabled: !!familyId
   });
 
-  const month = months[0];
-
-  const { data: incomes = [] } = useQuery({
-    queryKey: ['incomes', month?.id],
-    queryFn: () => apiClient.entities.Income.filter({ month_id: month.id }),
-    enabled: !!month
+  const { data: investmentBoxes = [] } = useQuery({
+    queryKey: ['investmentBoxes', familyId],
+    queryFn: () => apiClient.entities.InvestmentBox.filter({ family_id: familyId }),
+    enabled: !!familyId
   });
 
-  const { data: categories = [] } = useQuery({
-    queryKey: ['categories', family?.id],
-    queryFn: () => apiClient.entities.Category.filter({ family_id: family.id, ativo: true }),
-    enabled: !!family
+  const { data: stockInvestments = [] } = useQuery({
+    queryKey: ['stockInvestments', familyId],
+    queryFn: () => apiClient.entities.StockInvestment.filter({ family_id: familyId }),
+    enabled: !!familyId
   });
 
-  const { data: wealthPlans = [] } = useQuery({
-    queryKey: ['wealthPlans', month?.id],
-    queryFn: () => apiClient.entities.WealthPlan.filter({ month_id: month.id }),
-    enabled: !!month
+  const { data: debts = [] } = useQuery({
+    queryKey: ['debts', familyId],
+    queryFn: () => apiClient.entities.Debt.filter({ family_id: familyId }),
+    enabled: !!familyId
   });
 
-  const wealthPlan = wealthPlans[0];
-
-  // Initialize percentages when categories or wealthPlan loads
-  useEffect(() => {
-    if (categories.length === 0) return;
-
-    if (wealthPlan?.distribuicao) {
-      try {
-        const saved = JSON.parse(wealthPlan.distribuicao);
-        const updated = {};
-        categories.forEach(cat => {
-          updated[cat.id] = saved[cat.id] ?? (100 / categories.length);
-        });
-        setPercentages(updated);
-        return;
-      } catch (e) {}
-    }
-
-    // Default: distribute equally
-    const equalShare = parseFloat((100 / categories.length).toFixed(2));
-    const defaults = {};
-    categories.forEach((cat, i) => {
-      defaults[cat.id] = i === categories.length - 1
-        ? parseFloat((100 - equalShare * (categories.length - 1)).toFixed(2))
-        : equalShare;
-    });
-    setPercentages(defaults);
-  }, [categories, wealthPlan]);
-
-  const saveWealthPlanMutation = useMutation({
-    mutationFn: (data) => wealthPlan
-      ? apiClient.entities.WealthPlan.update(wealthPlan.id, data)
-      : apiClient.entities.WealthPlan.create({ ...data, month_id: month.id }),
+  // Mutações
+  const createAssetMutation = useMutation({
+    mutationFn: (data) => apiClient.entities.Asset.create({ ...data, family_id: familyId }),
     onSuccess: () => {
-      queryClient.invalidateQueries(['wealthPlans']);
-      toast.success('Distribuição salva!');
+      queryClient.invalidateQueries(['assets']);
+      setIsAssetModalOpen(false);
+      setNewAsset({ nome: '', tipo: 'IMOVEL', valor: '', descricao: '' });
+      toast.success('Bem adicionado ao patrimônio!');
     }
   });
 
-  const totalIncome = incomes.reduce((sum, i) => sum + (i.valor || 0), 0);
-  const totalPercentage = Object.values(percentages).reduce((sum, p) => sum + (parseFloat(p) || 0), 0);
-  const isValid = Math.abs(totalPercentage - 100) < 0.5;
+  const deleteAssetMutation = useMutation({
+    mutationFn: (id) => apiClient.entities.Asset.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['assets']);
+      toast.success('Bem removido com sucesso.');
+    }
+  });
+
+  const handleSaveAsset = () => {
+    if (!newAsset.nome || !newAsset.valor) {
+      toast.error("Preencha o nome e o valor estimado do bem.");
+      return;
+    }
+    createAssetMutation.mutate({
+      ...newAsset,
+      valor: parseFloat(newAsset.valor.replace(',', '.'))
+    });
+  };
 
   const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
-  const handlePercentageChange = (catId, value) => {
-    setPercentages(prev => ({ ...prev, [catId]: parseFloat(value) || 0 }));
-  };
+  // Cálculos de Totais
+  const totalAssetsFisicos = assets.reduce((acc, curr) => acc + (curr.valor || 0), 0);
+  const totalCaixinhas = investmentBoxes.reduce((acc, curr) => acc + (curr.saldo_atual || 0), 0);
+  const totalBolsa = stockInvestments.reduce((acc, curr) => acc + (curr.quantidade * (curr.preco_atual || curr.preco_medio)), 0);
+  
+  const totalAtivos = totalAssetsFisicos + totalCaixinhas + totalBolsa;
+  
+  const totalPassivos = debts.filter(d => d.status === 'ATIVA').reduce((acc, curr) => acc + (curr.saldo_atual || 0), 0);
+  
+  const patrimonioLiquido = totalAtivos - totalPassivos;
 
-  const handleSave = () => {
-    if (!month) return;
-    saveWealthPlanMutation.mutate({
-      distribuicao: JSON.stringify(percentages)
-    });
-  };
-
-  const sortedCategories = [...categories].sort((a, b) => (a.ordem_exibicao || 0) - (b.ordem_exibicao || 0));
-
-  const distributionData = sortedCategories.map((cat, i) => ({
-    name: cat.nome,
-    value: parseFloat(percentages[cat.id]) || 0,
-    color: cat.cor || PRESET_COLORS[i % PRESET_COLORS.length]
-  })).filter(d => d.value > 0);
-
-  // Compound interest calculator
-  const calculateCompoundInterest = () => {
-    const P = parseFloat(calcInitial) || 0;
-    const A = parseFloat(calcMonthly) || 0;
-    const i = (parseFloat(calcRate) || 0) / 100;
-    const n = parseInt(calcMonths) || 0;
-    const data = [];
-    let balance = P;
-    for (let m = 0; m <= n; m++) {
-      data.push({ month: m, saldo: Math.round(balance * 100) / 100, aportado: P + (A * m) });
-      balance = balance * (1 + i) + A;
-    }
-    return data;
-  };
-
-  const projectionData = calculateCompoundInterest();
-  const finalBalance = projectionData[projectionData.length - 1]?.saldo || 0;
-  const totalInvested = parseFloat(calcInitial) + (parseFloat(calcMonthly) * parseInt(calcMonths));
-  const totalReturn = finalBalance - totalInvested;
+  // Dados para o Gráfico de Ativos
+  const chartDataAtivos = [
+    { name: 'Dinheiro/Caixinhas', value: totalCaixinhas, color: '#10B981' },
+    { name: 'Ações/Fundos', value: totalBolsa, color: '#06B6D4' },
+    ...assets.map(a => ({
+      name: a.nome,
+      value: a.valor,
+      color: ASSET_TYPES[a.tipo]?.color || '#64748B'
+    }))
+  ].filter(i => i.value > 0);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8"
-        >
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Patrimônio</h1>
-            <p className="text-slate-500 mt-1">Distribua sua renda entre as categorias</p>
-          </div>
-          <MonthSelector currentDate={currentDate} onDateChange={setCurrentDate} />
-        </motion.div>
+    <div className="min-h-screen bg-slate-50/50 pb-20">
+      <div className="bg-slate-900 px-4 sm:px-6 lg:px-8 pt-10 pb-24">
+        <div className="max-w-7xl mx-auto">
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Balanço Patrimonial</h1>
+            <p className="text-slate-400 mt-2">Visão consolidada do verdadeiro patrimônio da família.</p>
+          </motion.div>
+        </div>
+      </div>
 
-        {/* Renda Total destaque */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <Card className="p-5 border-0 shadow-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-emerald-100 text-sm font-medium">Renda Total do Mês</p>
-                <p className="text-4xl font-bold mt-1">{formatCurrency(totalIncome)}</p>
-                {!month && <p className="text-emerald-200 text-xs mt-1">Nenhum mês aberto para {competencia}</p>}
-              </div>
-              <div className="p-4 bg-white/20 rounded-2xl">
-                <Wallet className="w-8 h-8" />
-              </div>
-            </div>
-          </Card>
-        </motion.div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6">
-            <TabsTrigger value="distribution">Distribuição da Renda</TabsTrigger>
-            <TabsTrigger value="calculator">Calculadora</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="distribution">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: category sliders */}
-              <Card className="p-6 border-0 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-slate-800">Ajustar Percentuais</h2>
-                  <div className={cn(
-                    "px-3 py-1 rounded-full text-sm font-medium",
-                    totalPercentage > 100 ? "bg-red-100 text-red-700" : isValid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                  )}>
-                    Total: {totalPercentage.toFixed(1)}%
-                    {totalPercentage > 100 && (
-                      <span className="ml-1 font-bold">(+{(totalPercentage - 100).toFixed(1)}% acima)</span>
-                    )}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <Card className="p-6 border-0 shadow-lg bg-white relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
+              <div className="relative">
+                <div className="flex items-center gap-3 text-emerald-600 mb-2">
+                  <div className="p-2 bg-emerald-100 rounded-lg">
+                    <ArrowUpRight className="w-5 h-5" />
                   </div>
+                  <span className="font-semibold text-sm">Ativos (Bens e Direitos)</span>
                 </div>
+                <h3 className="text-3xl font-bold text-slate-800">{formatCurrency(totalAtivos)}</h3>
+                <p className="text-xs text-slate-400 mt-2">Tudo que possui valor financeiro</p>
+              </div>
+            </Card>
+          </motion.div>
 
-                {!isValid && (
-                  <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg text-red-700 text-sm mb-4">
-                    <AlertCircle className="w-4 h-4" />
-                    A soma deve ser exatamente 100%
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <Card className="p-6 border-0 shadow-lg bg-white relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-50 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
+              <div className="relative">
+                <div className="flex items-center gap-3 text-red-600 mb-2">
+                  <div className="p-2 bg-red-100 rounded-lg">
+                    <ArrowDownRight className="w-5 h-5" />
                   </div>
-                )}
+                  <span className="font-semibold text-sm">Passivos (Dívidas)</span>
+                </div>
+                <h3 className="text-3xl font-bold text-slate-800">{formatCurrency(totalPassivos)}</h3>
+                <p className="text-xs text-slate-400 mt-2">Obrigações e financiamentos</p>
+              </div>
+            </Card>
+          </motion.div>
 
-                {categories.length === 0 && (
-                  <div className="p-6 text-center text-slate-500">
-                    <Tag className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                    <p>Nenhuma categoria cadastrada.</p>
-                    <p className="text-sm">Crie categorias na página Categorias.</p>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <Card className={cn(
+               "p-6 border-0 shadow-lg relative overflow-hidden group text-white",
+               patrimonioLiquido >= 0 ? "bg-gradient-to-br from-indigo-500 to-blue-700" : "bg-gradient-to-br from-red-500 to-rose-700"
+            )}>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-110" />
+              <div className="relative">
+                <div className="flex items-center gap-3 text-indigo-100 mb-2">
+                  <div className="p-2 bg-white/20 rounded-lg">
+                    <Landmark className="w-5 h-5" />
                   </div>
-                )}
+                  <span className="font-semibold text-sm">Patrimônio Líquido Real</span>
+                </div>
+                <h3 className="text-3xl font-bold">{formatCurrency(patrimonioLiquido)}</h3>
+                <p className="text-xs text-indigo-100 mt-2">A verdadeira riqueza da família</p>
+              </div>
+            </Card>
+          </motion.div>
+        </div>
 
-                <div className="space-y-5 max-h-[480px] overflow-y-auto pr-1">
-                  {sortedCategories.map((cat, i) => {
-                    const pct = parseFloat(percentages[cat.id]) || 0;
-                    const valorReal = totalIncome * pct / 100;
-                    const color = cat.cor || PRESET_COLORS[i % PRESET_COLORS.length];
-                    return (
-                      <div key={cat.id} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-8 h-8 rounded-lg flex items-center justify-center"
-                              style={{ backgroundColor: color + '20' }}
-                            >
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-8">
+            {/* Lista de Ativos Cadastrados */}
+            <Card className="p-6 shadow-sm border-0 border-t-4 border-t-indigo-500 bg-white">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Meus Bens Físicos e Direitos</h2>
+                  <p className="text-sm text-slate-500">Casas, carros, terrenos e heranças.</p>
+                </div>
+                <Button onClick={() => setIsAssetModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700">
+                  <Plus className="w-4 h-4 mr-2" /> Adicionar Bem
+                </Button>
+              </div>
+
+              {assets.length === 0 ? (
+                <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-4">
+                    <Home className="w-8 h-8 text-indigo-400" />
+                  </div>
+                  <h3 className="text-slate-800 font-medium mb-1">Nenhum bem cadastrado</h3>
+                  <p className="text-slate-500 text-sm max-w-sm mx-auto">
+                    Adicione seus imóveis, veículos e outros bens para calcular o verdadeiro patrimônio líquido.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <AnimatePresence>
+                    {assets.map(asset => {
+                      const TypeIcon = ASSET_TYPES[asset.tipo]?.icon || HardDrive;
+                      const typeColor = ASSET_TYPES[asset.tipo]?.color || '#64748B';
+                      return (
+                        <motion.div
+                          key={asset.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className="p-4 rounded-xl border border-slate-100 bg-slate-50 relative group hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-white shadow-sm" style={{ color: typeColor }}>
+                                <TypeIcon className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-slate-800 leading-tight">{asset.nome}</h4>
+                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 mt-1 inline-block">
+                                  {ASSET_TYPES[asset.tipo]?.label}
+                                </span>
+                              </div>
                             </div>
-                            <span className="font-medium text-slate-700 text-sm">{cat.nome}</span>
+                            <button 
+                              onClick={() => {
+                                if(confirm('Remover este bem do seu patrimônio?')) deleteAssetMutation.mutate(asset.id);
+                              }}
+                              className="text-slate-300 hover:text-red-500 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-800 min-w-[80px] text-right">
-                              {formatCurrency(valorReal)}
-                            </span>
-                            <Input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.5"
-                              value={pct}
-                              onChange={(e) => handlePercentageChange(cat.id, e.target.value)}
-                              className="w-16 text-right text-sm h-8"
-                            />
-                            <span className="text-sm text-slate-400">%</span>
+                          <div className="mt-4">
+                            <p className="text-2xl font-bold text-slate-800">{formatCurrency(asset.valor)}</p>
+                            {asset.descricao && (
+                              <p className="text-sm text-slate-500 mt-1 truncate">{asset.descricao}</p>
+                            )}
                           </div>
-                        </div>
-                        <Slider
-                          value={[pct]}
-                          onValueChange={([v]) => handlePercentageChange(cat.id, v)}
-                          max={100}
-                          step={0.5}
-                          className="[&>span:first-child]:bg-slate-200"
-                          style={{ '--slider-thumb-color': color }}
-                        />
-                      </div>
-                    );
-                  })}
+                        </motion.div>
+                      );
+                    })}
+                  </AnimatePresence>
                 </div>
+              )}
+            </Card>
 
-                {categories.length > 0 && (
-                  <Button
-                    onClick={handleSave}
-                    disabled={!isValid || !month}
-                    className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    Salvar Distribuição
-                  </Button>
-                )}
+            {/* Outros componentes que formam o patrimônio: Investimentos e Dívidas */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="p-5 shadow-sm border-0 bg-white">
+                 <div className="flex items-center gap-3 mb-4 text-slate-800">
+                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Coins className="w-5 h-5"/></div>
+                    <h3 className="font-bold">Investimentos (Ativos)</h3>
+                 </div>
+                 <div className="space-y-3">
+                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                      <span className="text-sm text-slate-600 font-medium">Caixinhas (Renda Fixa)</span>
+                      <span className="font-bold text-slate-800">{formatCurrency(totalCaixinhas)}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
+                      <span className="text-sm text-slate-600 font-medium">Bolsa de Valores (Ações)</span>
+                      <span className="font-bold text-slate-800">{formatCurrency(totalBolsa)}</span>
+                    </div>
+                    <p className="text-xs text-slate-400 text-center mt-2 px-4">
+                      Estes valores são atualizados diretamente das suas carteiras de investimentos.
+                    </p>
+                 </div>
               </Card>
 
-              {/* Right: chart + table */}
-              <div className="space-y-6">
-                <Card className="p-6 border-0 shadow-sm">
-                  <h2 className="text-lg font-semibold text-slate-800 mb-4">Visão Geral</h2>
-                  <div className="h-64">
+              <Card className="p-5 shadow-sm border-0 bg-white">
+                 <div className="flex items-center gap-3 mb-4 text-slate-800">
+                    <div className="p-2 bg-red-100 text-red-600 rounded-lg"><ArrowDownRight className="w-5 h-5"/></div>
+                    <h3 className="font-bold">Dívidas (Passivos)</h3>
+                 </div>
+                 <div className="space-y-3">
+                    {debts.filter(d => d.status === 'ATIVA').slice(0, 3).map(d => (
+                       <div key={d.id} className="flex justify-between items-center p-3 bg-red-50/50 rounded-lg">
+                          <span className="text-sm text-slate-700 font-medium truncate max-w-[140px]">{d.nome_divida}</span>
+                          <span className="font-bold text-red-600">{formatCurrency(d.saldo_atual)}</span>
+                       </div>
+                    ))}
+                    {debts.length === 0 && <p className="text-sm text-slate-500 p-3 text-center">Nenhuma dívida ativa registrada.</p>}
+                    <p className="text-xs text-slate-400 text-center mt-2 px-4">
+                      Saldos de dívidas e financiamentos subtraem o seu patrimônio.
+                    </p>
+                 </div>
+              </Card>
+            </div>
+          </div>
+
+          <div className="lg:col-span-1">
+            <Card className="p-6 shadow-sm border-0 bg-white sticky top-6">
+              <h3 className="font-bold text-slate-800 mb-6 text-lg">Distribuição dos Ativos</h3>
+              {totalAtivos > 0 ? (
+                <>
+                  <div className="h-64 mb-6 relative">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={distributionData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={90}
+                          data={chartDataAtivos}
+                          innerRadius={60}
+                          outerRadius={85}
                           paddingAngle={3}
                           dataKey="value"
                         >
-                          {distributionData.map((entry, index) => (
-                            <Cell key={index} fill={entry.color} />
+                          {chartDataAtivos.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(value, name) => [`${value}%`, name]} />
-                        <Legend
-                          layout="vertical"
-                          align="right"
-                          verticalAlign="middle"
-                          formatter={(value) => <span className="text-xs text-slate-600">{value}</span>}
+                        <Tooltip 
+                           formatter={(value) => formatCurrency(value)}
+                           contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}
                         />
                       </PieChart>
                     </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                       <span className="text-xs text-slate-400 font-medium">Total Ativos</span>
+                       <span className="text-sm font-bold text-slate-800">{formatCurrency(totalAtivos)}</span>
+                    </div>
                   </div>
-                </Card>
-
-                {/* Summary table */}
-                <Card className="p-6 border-0 shadow-sm">
-                  <h2 className="text-lg font-semibold text-slate-800 mb-4">Resumo em Reais</h2>
-                  <div className="space-y-2">
-                    {sortedCategories.map((cat, i) => {
-                      const pct = parseFloat(percentages[cat.id]) || 0;
-                      const valorReal = totalIncome * pct / 100;
-                      const color = cat.cor || PRESET_COLORS[i % PRESET_COLORS.length];
-                      return (
-                        <div key={cat.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-                            <span className="text-sm text-slate-700">{cat.nome}</span>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-slate-900 text-sm">{formatCurrency(valorReal)}</p>
-                            <p className="text-xs text-slate-400">{pct.toFixed(1)}%</p>
-                          </div>
+                  <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                    {chartDataAtivos.sort((a,b)=> b.value - a.value).map((item, i) => (
+                      <div key={i} className="flex justify-between items-center">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                           <span className="text-sm text-slate-600 truncate">{item.name}</span>
                         </div>
-                      );
-                    })}
+                        <span className="text-sm font-semibold text-slate-800 pl-2">
+                           {((item.value / totalAtivos) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="calculator">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card className="p-6 border-0 shadow-sm">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-teal-50 rounded-lg">
-                    <Calculator className="w-5 h-5 text-teal-600" />
-                  </div>
-                  <h2 className="text-lg font-semibold text-slate-800">Calculadora de Juros Compostos</h2>
+                </>
+              ) : (
+                <div className="text-center py-10 opacity-50">
+                   <Landmark className="w-16 h-16 mx-auto mb-2 opacity-50 text-slate-300" />
+                   <p className="text-sm text-slate-500">Adicione bens para ver o gráfico.</p>
                 </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Valor Inicial (R$)</Label>
-                    <Input type="number" value={calcInitial} onChange={(e) => setCalcInitial(e.target.value)} placeholder="1000" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Aporte Mensal (R$)</Label>
-                    <Input type="number" value={calcMonthly} onChange={(e) => setCalcMonthly(e.target.value)} placeholder="500" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Taxa de Juros Mensal (%)</Label>
-                    <Input type="number" step="0.01" value={calcRate} onChange={(e) => setCalcRate(e.target.value)} placeholder="1" />
-                    <p className="text-xs text-slate-500">
-                      Equivale a {((Math.pow(1 + (parseFloat(calcRate) || 0) / 100, 12) - 1) * 100).toFixed(2)}% ao ano
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Período (meses)</Label>
-                    <Input type="number" value={calcMonths} onChange={(e) => setCalcMonths(e.target.value)} placeholder="12" />
-                    <p className="text-xs text-slate-500">{(parseInt(calcMonths) / 12).toFixed(1)} anos</p>
-                  </div>
-                </div>
-                <div className="mt-6 space-y-3">
-                  <div className="p-4 bg-teal-50 rounded-lg">
-                    <p className="text-sm text-teal-600">Montante Final</p>
-                    <p className="text-2xl font-bold text-teal-700">{formatCurrency(finalBalance)}</p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-slate-50 rounded-lg">
-                      <p className="text-xs text-slate-500">Total Investido</p>
-                      <p className="font-semibold text-slate-800">{formatCurrency(totalInvested)}</p>
-                    </div>
-                    <div className="p-3 bg-emerald-50 rounded-lg">
-                      <p className="text-xs text-emerald-600">Rendimento</p>
-                      <p className="font-semibold text-emerald-700">{formatCurrency(totalReturn)}</p>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6 border-0 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-800 mb-4">Projeção de Crescimento</h2>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={projectionData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
-                      <XAxis dataKey="month" stroke="#94A3B8" tickFormatter={(v) => `${v}m`} />
-                      <YAxis stroke="#94A3B8" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                      <Tooltip
-                        formatter={(value, name) => [formatCurrency(value), name === 'saldo' ? 'Saldo' : 'Aportado']}
-                        labelFormatter={(v) => `Mês ${v}`}
-                        contentStyle={{ backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px' }}
-                      />
-                      <Line type="monotone" dataKey="aportado" stroke="#94A3B8" strokeWidth={2} dot={false} name="aportado" />
-                      <Line type="monotone" dataKey="saldo" stroke="#14B8A6" strokeWidth={2} dot={false} name="saldo" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex justify-center gap-6 mt-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-slate-400" />
-                    <span className="text-sm text-slate-600">Valor Aportado</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-teal-500" />
-                    <span className="text-sm text-slate-600">Saldo com Juros</span>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+              )}
+            </Card>
+          </div>
+        </div>
       </div>
+
+      <Dialog open={isAssetModalOpen} onOpenChange={setIsAssetModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Adicionar Bem ao Patrimônio</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome do Bem</Label>
+              <Input 
+                placeholder="Ex: Apartamento Centro, BMW X1..." 
+                value={newAsset.nome} 
+                onChange={e => setNewAsset({...newAsset, nome: e.target.value})}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+               <div className="space-y-2">
+                 <Label>Tipo de Bem</Label>
+                 <Select value={newAsset.tipo} onValueChange={v => setNewAsset({...newAsset, tipo: v})}>
+                   <SelectTrigger>
+                     <SelectValue />
+                   </SelectTrigger>
+                   <SelectContent>
+                     {Object.entries(ASSET_TYPES).map(([key, data]) => (
+                       <SelectItem key={key} value={key}>
+                         <div className="flex items-center gap-2">
+                            <data.icon className="w-4 h-4" style={{ color: data.color }}/>
+                            {data.label}
+                         </div>
+                       </SelectItem>
+                     ))}
+                   </SelectContent>
+                 </Select>
+               </div>
+               <div className="space-y-2">
+                 <Label>Valor Estimado (R$)</Label>
+                 <Input 
+                   type="number"
+                   placeholder="0.00" 
+                   value={newAsset.valor} 
+                   onChange={e => setNewAsset({...newAsset, valor: e.target.value})}
+                 />
+               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição Adicional (Opcional)</Label>
+              <Input 
+                placeholder="Ex: Herança avó materna, Quitado..." 
+                value={newAsset.descricao} 
+                onChange={e => setNewAsset({...newAsset, descricao: e.target.value})}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAssetModalOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveAsset} className="bg-indigo-600 hover:bg-indigo-700">
+               Adicionar ao Patrimônio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

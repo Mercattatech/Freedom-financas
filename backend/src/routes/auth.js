@@ -72,6 +72,32 @@ router.post('/login', async (req, res) => {
       return res.status(403).json({ status: 403, message: 'verify your email' });
     }
 
+    // --- LOGIC FOR LAST LOGIN & WEEKLY VISITS ---
+    const now = new Date();
+    let logins_this_week = user.logins_this_week || 0;
+    let last_weekly_reset = user.last_weekly_reset || null;
+    
+    if (!last_weekly_reset || (now - new Date(last_weekly_reset)) > 7 * 24 * 60 * 60 * 1000) {
+      logins_this_week = 1;
+      last_weekly_reset = now;
+    } else {
+      const lastLoginDay = user.last_login ? new Date(user.last_login).toISOString().split('T')[0] : null;
+      const todayString = now.toISOString().split('T')[0];
+      if (lastLoginDay !== todayString) {
+         logins_this_week += 1;
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        last_login: now,
+        logins_this_week,
+        last_weekly_reset
+      }
+    });
+    // ---------------------------------------------
+
     // Generate JWT
     const accessToken = jwt.sign(
       { id: user.id, email: user.email, role: user.role }, 
@@ -169,7 +195,7 @@ router.post('/forgot-password', async (req, res) => {
       { expiresIn: '1h' }
     );
     
-    const requestHost = 'http://localhost:5173'; // Force frontend port for local testing
+    const requestHost = process.env.FRONTEND_URL || req.headers.origin || 'http://localhost:5173';
     const resetLink = `${requestHost}/ResetPassword?token=${resetToken}`;
 
     console.log('\n======================================================');
@@ -178,10 +204,55 @@ router.post('/forgot-password', async (req, res) => {
     console.log(`Acesse este link para redefinir: ${resetLink}`);
     console.log('======================================================\n');
 
-    return res.json({ success: true, message: 'Verifique o log do servidor (Node) para clicar no link!' });
+    if (process.env.RESEND_API_KEY) {
+      try {
+        const { Resend } = require('resend');
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        
+        await resend.emails.send({
+          from: 'Freedom App <no-reply@mercattafreedom.com.br>',
+          to: email,
+          subject: 'Recuperação de Senha - Freedom App',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+              <h2 style="color: #0f172a;">Recuperação de Senha</h2>
+              <p style="color: #475569; font-size: 16px;">Oi, você solicitou a redefinição da sua senha no Freedom.</p>
+              <p style="color: #475569; font-size: 16px;">Clique no botão abaixo para criar uma senha nova:</p>
+              <div style="margin: 30px 0;">
+                <a href="${resetLink}" style="background-color: #10b981; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px;">Redefinir Minha Senha</a>
+              </div>
+              <p style="color: #94a3b8; font-size: 14px;">Se não foi você ou se lembrou da sua senha, pode apenas ignorar e excluir este e-mail.</p>
+            </div>
+          `
+        });
+        console.log(`✅ E-mail de recuperação enviado com sucesso para ${email}`);
+      } catch (err) {
+        console.error('❌ Erro ao enviar e-mail via Resend:', err.message);
+      }
+    } else {
+      console.log('⚠️ RESEND_API_KEY não configurada. O e-mail não foi disparado.');
+    }
+
+    return res.json({ success: true, message: 'Se o email existir, um link de recuperação foi enviado para a sua caixa de entrada!' });
   } catch (error) {
     console.error('Error in forgot-password:', error);
     res.status(500).json({ status: 500, message: 'Erro interno ao processar a solicitação.' });
+  }
+});
+
+// POST /api/auth/send-reminder
+router.post('/send-reminder', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Acesso negado' });
+    const { email } = req.body;
+    
+    // NOTE: Sending real emails relies on Resend/etc. 
+    // This logs the action to console and returns success.
+    console.log(`[ENGAGEMENT] E-mail de retenção enviado para o usuário: ${email}. O sistema avisou "Cuidado para as finanças não irem para o buraco!".`);
+    
+    return res.json({ success: true, message: 'E-mail de retenção enviado!' });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

@@ -18,6 +18,7 @@ import Wealth from './pages/Wealth';
 import Obrigado from './pages/Obrigado';
 import Evolution from './pages/Evolution';
 import Goals from './pages/Goals';
+import HelpCenter from './pages/HelpCenter';
 import __Layout from './Layout.jsx';
 
 
@@ -38,6 +39,7 @@ export const PAGES = {
     "Obrigado": Obrigado,
     "Evolution": Evolution,
     "Goals": Goals,
+    "HelpCenter": HelpCenter,
 }
 
 // Pages that don't require authentication

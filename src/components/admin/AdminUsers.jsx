@@ -352,12 +352,29 @@ export default function AdminUsers() {
                       <ExternalLink className="w-4 h-4" />
                     </a>
                   )}
-                  <button onClick={() => startEdit(a)} className="p-2 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors">
+                  {appUsers.find(u => u.email === a.user_email) && (
+                    <button
+                      onClick={() => {
+                         const u = appUsers.find(x => x.email === a.user_email);
+                         if (confirm(`Deseja alterar as permissões de ${a.user_email}?`)) {
+                             apiClient.entities.User.update(u.id, { role: u.role === 'admin' ? 'user' : 'admin' })
+                              .then(() => { toast.success('Permissão alterada!'); queryClient.invalidateQueries({ queryKey: ['app-users'] }); })
+                              .catch(err => toast.error(err.message));
+                         }
+                      }}
+                      className={`p-2 rounded-lg transition-colors ${appUsers.find(u => u.email === a.user_email).role === 'admin' ? 'bg-indigo-500/20 text-indigo-400 hover:bg-red-500/20 hover:text-red-400' : 'text-slate-500 hover:bg-indigo-500/20 hover:text-indigo-400'}`}
+                      title={appUsers.find(u => u.email === a.user_email).role === 'admin' ? 'Revogar acesso Admin' : 'Conceder acesso Admin (Dono)'}
+                    >
+                      <AlertCircle className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button onClick={() => startEdit(a)} className="p-2 rounded-lg hover:bg-slate-800 text-slate-500 hover:text-white transition-colors" title="Editar informações do acesso">
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => { if (confirm(`Remover acesso de ${a.user_email}?`)) deleteMutation.mutate(a.id); }}
                     className="p-2 rounded-lg hover:bg-red-500/10 text-slate-600 hover:text-red-400 transition-colors"
+                    title="Excluir Painel de Acesso"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

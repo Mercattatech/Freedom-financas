@@ -9,11 +9,13 @@ import { Loader2, ShieldAlert, Save, Eye, BarChart3, MessageSquare, HelpCircle, 
 import AdminUsers from '../components/admin/AdminUsers';
 import AdminPayments from '../components/admin/AdminPayments';
 import AdminFamilies from '../components/admin/AdminFamilies';
+import AdminAccounts from '../components/admin/AdminAccounts';
 import { toast } from 'sonner';
 
 const TABS = [
   { id: 'payments', label: '💳 Pagamentos' },
   { id: 'users', label: '👥 Acessos Manuais' },
+  { id: 'accounts', label: '📈 Contas & Engajamento' },
   { id: 'families', label: '🏠 Famílias Cadastradas' },
   { id: 'plans', label: '💰 Planos & Preços' },
   { id: 'cms', label: '🎨 Landing Page (CMS)' },

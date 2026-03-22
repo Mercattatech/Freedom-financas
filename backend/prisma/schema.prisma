@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
@@ -17,6 +17,9 @@ model User {
   role         String   @default("user")
   otpCode      String?
   must_change_password Boolean @default(false)
+  last_login   DateTime?
+  logins_this_week Int @default(0)
+  last_weekly_reset DateTime?
   created_date DateTime @default(now())
   updated_date DateTime @updatedAt
   
@@ -44,6 +47,7 @@ model Family {
   investmentBoxes   InvestmentBox[]
   stockInvestments  StockInvestment[]
   stockAlerts       StockAlert[]
+  assets            Asset[]
 }
 
 model Category {
@@ -360,4 +364,19 @@ model LandingCms {
   
   created_date         DateTime @default(now())
   updated_date         DateTime @updatedAt
+}
+
+model Asset {
+  id              String   @id @default(uuid())
+  nome            String
+  tipo            String   // "IMOVEL", "VEICULO", "TERRENO", "HERANCA", "OUTROS"
+  valor           Float
+  descricao       String?
+  data_aquisicao  String?
+  ativo           Boolean  @default(true)
+  family_id       String
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
 }
