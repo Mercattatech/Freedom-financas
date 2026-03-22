@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { useAuth } from '@/lib/AuthContext';
-import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle } from 'lucide-react';
+import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { apiClient } from '@/api/apiClient';
 import { toast } from 'sonner';
@@ -61,6 +61,15 @@ export default function Layout({ children, currentPageName }) {
   const { user, logout, checkAppState } = useAuth();
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [privacyMode, setPrivacyMode] = useState(window.isPrivacyModeOn || false);
+
+  const togglePrivacy = () => {
+    const newVal = !privacyMode;
+    setPrivacyMode(newVal);
+    window.isPrivacyModeOn = newVal;
+    localStorage.setItem('freedom_privacy_mode', String(newVal));
+    window.location.reload();
+  };
 
   const navItems = [
     { name: 'Dashboard', icon: Home, path: 'Dashboard' },
@@ -152,6 +161,14 @@ export default function Layout({ children, currentPageName }) {
 
             {/* User Info / Logout */}
             <div className="flex items-center gap-3">
+              <button
+                onClick={togglePrivacy}
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-emerald-400 dark:hover:bg-slate-800 transition-all flex"
+                title={privacyMode ? "Mostrar Valores" : "Ocultar Valores (Modo Privacidade)"}
+              >
+                {privacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+
               <button
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                 className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-amber-400 dark:hover:bg-slate-800 transition-all hidden sm:flex"
