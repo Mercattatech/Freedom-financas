@@ -208,9 +208,10 @@ router.post('/forgot-password', async (req, res) => {
       try {
         const { Resend } = require('resend');
         const resend = new Resend(process.env.RESEND_API_KEY);
+        const fromEmail = process.env.RESEND_FROM_EMAIL || 'Freedom App <onboarding@resend.dev>';
         
         await resend.emails.send({
-          from: 'Freedom App <no-reply@mercattafreedom.com.br>',
+          from: fromEmail,
           to: email,
           subject: 'Recuperação de Senha - Freedom App',
           html: `
