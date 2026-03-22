@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -293,7 +293,7 @@ model UserAccess {
   data_inicio            String?
   data_expiracao         String?
   limite_familias        Int      @default(1)
-  observacoes            String?  @db.Text
+  observacoes            String?
   origem                 String   @default("MANUAL")
   stripe_subscription_id String?
   stripe_customer_id     String?
@@ -308,7 +308,7 @@ model Plan {
   tipo                 String   @default("MENSAL")
   preco                Float
   preco_original       Float?
-  features             String?  @db.Text
+  features             String?
   destaque             Boolean  @default(false)
   badge                String?
   upsell_texto         String?
@@ -348,13 +348,13 @@ model LandingCms {
 
   depoimentos_titulo   String?
   depoimentos_subtitulo String?
-  depoimentos_json     String?   @db.Text
+  depoimentos_json     String?
 
   planos_titulo        String?
   planos_subtitulo     String?
 
   faq_titulo           String?
-  faqs_json            String?   @db.Text
+  faqs_json            String?
 
   cta_final_titulo     String?
   cta_final_subtitulo  String?
