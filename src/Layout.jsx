@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { useAuth } from '@/lib/AuthContext';
-import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff } from 'lucide-react';
+import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff, Bell } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useNotifications } from '@/hooks/useNotifications';
 import { apiClient } from '@/api/apiClient';
 import { toast } from 'sonner';
 
@@ -62,6 +64,8 @@ export default function Layout({ children, currentPageName }) {
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(window.isPrivacyModeOn || false);
+  const familyId = localStorage.getItem('selectedFamilyId');
+  const { notifications, unreadCount } = useNotifications(familyId);
 
   const togglePrivacy = () => {
     const newVal = !privacyMode;
@@ -159,8 +163,40 @@ export default function Layout({ children, currentPageName }) {
               </div>
             </div>
 
-            {/* User Info / Logout */}
+            {/* User Info / Logout / Actions */}
             <div className="flex items-center gap-3">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="relative p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800 transition-all flex">
+                    <Bell className="w-5 h-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-pulse"></span>
+                    )}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0 mr-4 mt-2" align="end">
+                  <div className="p-4 border-b border-slate-100 bg-slate-50 rounded-t-lg">
+                    <h3 className="font-semibold text-slate-800">Notificações</h3>
+                    <p className="text-xs text-slate-500">Avisos e vencimentos próximos</p>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto p-2 space-y-1">
+                    {notifications.length === 0 ? (
+                      <p className="text-sm text-slate-500 text-center py-6">Nenhuma notificação nova.</p>
+                    ) : (
+                      notifications.map(n => (
+                        <Link key={n.id} to={createPageUrl(n.link)} className="block p-3 rounded-lg hover:bg-slate-50 transition-colors">
+                          <div className={`text-xs font-semibold mb-1 ${n.type === 'urgent' ? 'text-red-600' : 'text-amber-600'}`}>
+                            {n.title}
+                          </div>
+                          <p className="text-sm text-slate-700">{n.message}</p>
+                          <span className="text-[10px] text-slate-400 mt-1 block">Clique para ver os detalhes</span>
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+
               <button
                 onClick={togglePrivacy}
                 className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-emerald-400 dark:hover:bg-slate-800 transition-all flex"

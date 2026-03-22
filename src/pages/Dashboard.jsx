@@ -5,12 +5,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { format } from 'date-fns';
 import { Button } from "@/components/ui/button";
-import { Plus, Wallet, TrendingUp, TrendingDown, PiggyBank, AlertCircle } from "lucide-react";
+import { Plus, Wallet, TrendingUp, TrendingDown, PiggyBank, AlertCircle, Download } from "lucide-react";
 import { motion } from "framer-motion";
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import { toast } from 'sonner';
 
 import FamilySetup from '@/components/setup/FamilySetup';
 import MonthSelector from '@/components/dashboard/MonthSelector';
 import FamilySelector from '@/components/dashboard/FamilySelector';
+import PrintableReport from '@/components/dashboard/PrintableReport';
 import StatCard from '@/components/dashboard/StatCard';
 import BudgetProgress from '@/components/dashboard/BudgetProgress';
 import RecentTransactions from '@/components/dashboard/RecentTransactions';
@@ -160,6 +164,49 @@ export default function Dashboard() {
     }).format(value);
   };
 
+  const generatePDF = async () => {
+    const element = document.getElementById('printable-report');
+    if (!element) return;
+    
+    const toastId = toast.loading('Gerando relatório PDF...');
+    
+    try {
+      element.style.top = '0px';
+      element.style.left = '0px';
+      element.style.zIndex = '-9999';
+
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      const imgData = canvas.toDataURL('image/png');
+      
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let position = 0;
+      let heightLeft = pdfHeight;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save(`Relatorio_Freedom_${competencia}.pdf`);
+      toast.success('Relatório baixado com sucesso!', { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao gerar relatório', { id: toastId });
+    } finally {
+      element.style.top = '-9999px';
+      element.style.left = '-9999px';
+    }
+  };
+
   if (loadingFamily) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -264,6 +311,14 @@ export default function Dashboard() {
           >
             <Plus className="w-4 h-4 mr-2" /> Nova Despesa
           </Button>
+          
+          <Button
+            onClick={generatePDF}
+            variant="outline"
+            className="ml-auto border-emerald-200 text-emerald-700 hover:bg-emerald-50 bg-white"
+          >
+            <Download className="w-4 h-4 mr-2" /> Baixar PDF
+          </Button>
         </motion.div>
 
         {/* Main Content Grid */}
@@ -311,6 +366,15 @@ export default function Dashboard() {
           />
         </motion.div>
       </div>
+
+      <PrintableReport
+        family={family}
+        month={{ month_year: competencia }}
+        incomes={incomes}
+        expenses={expenses}
+        debts={debts}
+        balance={balance}
+      />
 
       {/* Modals */}
       <IncomeModal
