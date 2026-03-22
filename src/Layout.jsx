@@ -60,12 +60,12 @@ function ForcePasswordChangeModal({ onPasswordChanged }) {
 
 export default function Layout({ children, currentPageName }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, logout, checkAppState } = useAuth();
+  const { user, logout, checkAppState, isAuthenticated } = useAuth();
   const { theme, setTheme } = useTheme();
   const [helpOpen, setHelpOpen] = useState(false);
   const [privacyMode, setPrivacyMode] = useState(window.isPrivacyModeOn || false);
   const familyId = localStorage.getItem('selectedFamilyId');
-  const { notifications, unreadCount } = useNotifications(familyId);
+  const { notifications, unreadCount } = useNotifications(familyId, isAuthenticated);
 
   const togglePrivacy = () => {
     const newVal = !privacyMode;

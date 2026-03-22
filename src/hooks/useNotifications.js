@@ -1,18 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/api/apiClient';
 
-export function useNotifications(familyId) {
+export function useNotifications(familyId, isAuthenticated) {
   const { data: debts = [] } = useQuery({
     queryKey: ['debts', familyId],
     queryFn: () => apiClient.entities.Debt.filter({ family_id: familyId }),
-    enabled: !!familyId,
+    enabled: !!familyId && !!isAuthenticated,
     staleTime: 5 * 60 * 1000
   });
 
   const { data: recurring = [] } = useQuery({
     queryKey: ['recurringExpenses', familyId],
     queryFn: () => apiClient.entities.RecurringExpense.filter({ family_id: familyId, ativo: true }),
-    enabled: !!familyId,
+    enabled: !!familyId && !!isAuthenticated,
     staleTime: 5 * 60 * 1000
   });
 
