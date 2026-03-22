@@ -19,11 +19,34 @@ export default function Login() {
     name: '',
     otpCode: ''
   });
+  const [captcha, setCaptcha] = useState({ n1: 0, n2: 0, answer: '' });
+  const [honeypot, setHoneypot] = useState('');
+
+  const generateCaptcha = () => {
+    setCaptcha({ 
+       n1: Math.floor(Math.random() * 9) + 1, 
+       n2: Math.floor(Math.random() * 9) + 1, 
+       answer: '' 
+    });
+  };
+
+  React.useEffect(() => {
+    generateCaptcha();
+    setHoneypot('');
+  }, [mode]);
 
   const f = (v) => setForm(prev => ({ ...prev, ...v }));
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (honeypot) return; // Bot protection
+    
+    if (parseInt(captcha.answer) !== captcha.n1 + captcha.n2) {
+      toast.error('Soma de segurança incorreta. Tente novamente.');
+      generateCaptcha();
+      return;
+    }
+
     if (!form.email || !form.password) {
       toast.error('Preencha todos os campos');
       return;
@@ -53,6 +76,14 @@ export default function Login() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (honeypot) return; // Bot protection
+    
+    if (parseInt(captcha.answer) !== captcha.n1 + captcha.n2) {
+      toast.error('Soma de segurança incorreta. Tente novamente.');
+      generateCaptcha();
+      return;
+    }
+
     if (!form.email || !form.password || !form.name) {
       toast.error('Preencha todos os campos');
       return;
@@ -108,6 +139,14 @@ export default function Login() {
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
+    if (honeypot) return; // Bot protection
+    
+    if (parseInt(captcha.answer) !== captcha.n1 + captcha.n2) {
+      toast.error('Soma de segurança incorreta. Tente novamente.');
+      generateCaptcha();
+      return;
+    }
+
     if (!form.email) {
       toast.error('Digite seu email');
       return;
@@ -219,6 +258,25 @@ export default function Login() {
                     >
                       Esqueceu a senha?
                     </button>
+                  </div>
+
+                  <input type="text" name="website_url" tabIndex="-1" autoComplete="off" value={honeypot} onChange={e => setHoneypot(e.target.value)} style={{ opacity: 0, position: 'absolute', top: 0, left: 0, height: 0, width: 0, zIndex: -1 }} aria-hidden="true" />
+                  
+                  <div className="space-y-2">
+                    <Label className="text-slate-300 text-sm">Anti-Robô: Qual é a soma?</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-800/50 border border-slate-700 h-12 rounded-xl flex items-center justify-center px-4 font-mono text-emerald-400 text-lg min-w-[100px] font-bold">
+                        {captcha.n1} + {captcha.n2} =
+                      </div>
+                      <Input
+                        type="number"
+                        value={captcha.answer}
+                        onChange={e => setCaptcha(prev => ({ ...prev, answer: e.target.value }))}
+                        placeholder="?"
+                        className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20 h-12 rounded-xl text-center font-mono text-lg flex-1"
+                        required
+                      />
+                    </div>
                   </div>
 
                   <Button
@@ -361,6 +419,25 @@ export default function Login() {
                     )}
                   </div>
 
+                  <input type="text" name="website_url" tabIndex="-1" autoComplete="off" value={honeypot} onChange={e => setHoneypot(e.target.value)} style={{ opacity: 0, position: 'absolute', top: 0, left: 0, height: 0, width: 0, zIndex: -1 }} aria-hidden="true" />
+                  
+                  <div className="space-y-2 pb-2">
+                    <Label className="text-slate-300 text-sm">Anti-Robô: Qual é a soma?</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-800/50 border border-slate-700 h-12 rounded-xl flex items-center justify-center px-4 font-mono text-emerald-400 text-lg min-w-[100px] font-bold">
+                        {captcha.n1} + {captcha.n2} =
+                      </div>
+                      <Input
+                        type="number"
+                        value={captcha.answer}
+                        onChange={e => setCaptcha(prev => ({ ...prev, answer: e.target.value }))}
+                        placeholder="?"
+                        className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20 h-12 rounded-xl text-center font-mono text-lg flex-1"
+                        required
+                      />
+                    </div>
+                  </div>
+
                   <Button
                     type="submit"
                     disabled={loading || form.password !== form.confirmPassword}
@@ -492,6 +569,25 @@ export default function Login() {
                         onChange={e => f({ email: e.target.value })}
                         placeholder="seu@email.com"
                         className="pl-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 h-12 rounded-xl"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <input type="text" name="website_url" tabIndex="-1" autoComplete="off" value={honeypot} onChange={e => setHoneypot(e.target.value)} style={{ opacity: 0, position: 'absolute', top: 0, left: 0, height: 0, width: 0, zIndex: -1 }} aria-hidden="true" />
+                  
+                  <div className="space-y-2 pb-2">
+                    <Label className="text-slate-300 text-sm">Anti-Robô: Qual é a soma?</Label>
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-800/50 border border-slate-700 h-12 rounded-xl flex items-center justify-center px-4 font-mono text-emerald-400 text-lg min-w-[100px] font-bold">
+                        {captcha.n1} + {captcha.n2} =
+                      </div>
+                      <Input
+                        type="number"
+                        value={captcha.answer}
+                        onChange={e => setCaptcha(prev => ({ ...prev, answer: e.target.value }))}
+                        placeholder="?"
+                        className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 focus:ring-emerald-500/20 h-12 rounded-xl text-center font-mono text-lg flex-1"
                         required
                       />
                     </div>
