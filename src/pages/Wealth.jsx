@@ -104,7 +104,7 @@ export default function Wealth() {
   // Cálculos de Totais
   const totalAssetsFisicos = assets.reduce((acc, curr) => acc + (curr.valor || 0), 0);
   const totalCaixinhas = investmentBoxes.reduce((acc, curr) => acc + (curr.saldo_atual || 0), 0);
-  const totalBolsa = stockInvestments.reduce((acc, curr) => acc + (curr.quantidade * (curr.preco_atual || curr.preco_medio)), 0);
+  const totalBolsa = stockInvestments.filter(s => s.ativo !== false).reduce((acc, curr) => acc + (curr.quantidade * (curr.preco_atual || curr.preco_medio)), 0);
   
   const totalAtivos = totalAssetsFisicos + totalCaixinhas + totalBolsa;
   
