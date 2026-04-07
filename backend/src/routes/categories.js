@@ -52,4 +52,68 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/categories/:id
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, tipo, cor, icone, ordem_exibicao, ativo } = req.body;
+    const category = await prisma.category.update({
+      where: { id },
+      data: {
+        ...(nome !== undefined && { nome }),
+        ...(tipo !== undefined && { tipo }),
+        ...(cor !== undefined && { cor }),
+        ...(icone !== undefined && { icone }),
+        ...(ordem_exibicao !== undefined && { ordem_exibicao }),
+        ...(ativo !== undefined && { ativo })
+      }
+    });
+    res.json(category);
+  } catch (error) {
+    console.error('Erro ao atualizar categoria:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/categories/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Desvincula subcategorias de despesas (set null)
+      await tx.expense.updateMany({
+        where: { subcategory_id: { in: (await tx.subcategory.findMany({ where: { category_id: id }, select: { id: true } })).map(s => s.id) } },
+        data: { subcategory_id: null }
+      });
+
+      // 2. Remove o category_id das despesas
+      await tx.expense.updateMany({
+        where: { category_id: id },
+        data: { category_id: null }
+      });
+
+      // 3. Remove o category_id dos budgets (se existir)
+      try {
+        await tx.budget.updateMany({
+          where: { category_id: id },
+          data: { category_id: null }
+        });
+      } catch (_) {}
+
+      // 4. Deleta as subcategorias
+      await tx.subcategory.deleteMany({ where: { category_id: id } });
+
+      // 5. Finalmente deleta a categoria
+      await tx.category.delete({ where: { id } });
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao excluir categoria:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 module.exports = router;

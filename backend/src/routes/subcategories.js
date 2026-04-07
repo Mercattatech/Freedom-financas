@@ -44,4 +44,36 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PUT /api/subcategories/:id
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, category_id, ativo } = req.body;
+    const sub = await prisma.subcategory.update({
+      where: { id },
+      data: {
+        ...(nome !== undefined && { nome }),
+        ...(category_id !== undefined && { category_id }),
+        ...(ativo !== undefined && { ativo })
+      }
+    });
+    res.json(sub);
+  } catch (error) {
+    console.error('Erro ao atualizar subcategoria:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/subcategories/:id
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.subcategory.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erro ao excluir subcategoria:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
