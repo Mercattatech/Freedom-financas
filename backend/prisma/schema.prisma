@@ -48,6 +48,7 @@ model Family {
   stockInvestments  StockInvestment[]
   stockAlerts       StockAlert[]
   assets            Asset[]
+  creditCards       CreditCard[]
 }
 
 model Category {
@@ -131,12 +132,14 @@ model Expense {
   category_id     String?
   subcategory_id  String?
   family_id       String?
+  credit_card_id  String?
   created_date    DateTime @default(now())
   updated_date    DateTime @updatedAt
 
   month          FinancialMonth @relation(fields: [month_id], references: [id], onDelete: Cascade)
   category       Category?      @relation(fields: [category_id], references: [id])
   subcategory    Subcategory?   @relation(fields: [subcategory_id], references: [id])
+  creditCard     CreditCard?    @relation(fields: [credit_card_id], references: [id])
 }
 
 model Budget {
@@ -379,4 +382,22 @@ model Asset {
   updated_date    DateTime @updatedAt
 
   family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+}
+
+model CreditCard {
+  id              String   @id @default(uuid())
+  nome            String
+  bandeira        String   @default("VISA") // VISA, MASTERCARD, ELO, AMEX, HIPERCARD, OUTRO
+  ultimos_digitos String?  // últimos 4 dígitos
+  limite          Float?   @default(0)
+  dia_fechamento  Int?     @default(1)
+  dia_vencimento  Int?     @default(10)
+  cor             String?  @default("#6366F1")
+  ativo           Boolean  @default(true)
+  family_id       String
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
+
+  family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
+  expenses        Expense[]
 }

@@ -21,7 +21,8 @@ const ENDPOINT_TO_PRISMA_MODEL = {
   'users': 'user',
   'plans': 'plan',
   'landingcmss': 'landingCms',
-  'assets': 'asset'
+  'assets': 'asset',
+  'creditcards': 'creditCard'
 };
 
 function createGenericRouter() {
@@ -54,11 +55,25 @@ function createGenericRouter() {
 
       if (req.method === 'GET' || req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
         const globalEndpoints = ['plans', 'landingcmss', 'users', 'useraccesses'];
+        // Entities that are scoped via month_id (their family_id comes from FinancialMonth)
+        const monthScopedEntities = ['incomes', 'expenses', 'budgets'];
         
         // === GLOBAL SECURITY POLICY FOR NON-ADMINS ===
         if (req.user.role !== 'admin' && !globalEndpoints.includes(entityParam)) {
           const myFamilies = await prisma.family.findMany({ where: { created_by: req.user.email }, select: { id: true } });
           const myFamilyIds = myFamilies.map(f => f.id);
+
+          // Auto-populate family_id on POST for month-scoped entities
+          if (req.method === 'POST' && monthScopedEntities.includes(entityParam) && req.body && req.body.month_id && !req.body.family_id) {
+            try {
+              const relatedMonth = await prisma.financialMonth.findUnique({ where: { id: req.body.month_id }, select: { family_id: true } });
+              if (relatedMonth) {
+                req.body.family_id = relatedMonth.family_id;
+              }
+            } catch (e) {
+              console.error('[Generic] Error resolving family_id from month_id:', e.message);
+            }
+          }
 
           // Block POST/PUT if trying to mutate someone else's family
           if (['POST', 'PUT'].includes(req.method) && req.body && req.body.family_id) {
@@ -71,6 +86,8 @@ function createGenericRouter() {
              const parsedQuery = { ...req.query };
              if (parsedQuery.ativo === 'true') parsedQuery.ativo = true;
              if (parsedQuery.ativo === 'false') parsedQuery.ativo = false;
+             if (parsedQuery.resolvido === 'true') parsedQuery.resolvido = true;
+             if (parsedQuery.resolvido === 'false') parsedQuery.resolvido = false;
 
              if (entityParam === 'investmentdeposits') {
                 const myBoxes = await prisma.investmentBox.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
@@ -78,6 +95,19 @@ function createGenericRouter() {
              } else if (entityParam === 'debtpayments') {
                 const myDebts = await prisma.debt.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
                 parsedQuery.debt_id = { in: myDebts.map(d => d.id) };
+             } else if (monthScopedEntities.includes(entityParam) && parsedQuery.month_id) {
+                // For month-scoped entities, validate month ownership instead of filtering by family_id
+                try {
+                  const relatedMonth = await prisma.financialMonth.findUnique({ where: { id: parsedQuery.month_id }, select: { family_id: true } });
+                  if (!relatedMonth || !myFamilyIds.includes(relatedMonth.family_id)) {
+                    return res.json([]); // Not the user's month
+                  }
+                  // month_id is valid and belongs to user - do NOT add family_id filter
+                  // because older records may have family_id = null
+                } catch (e) {
+                  console.error('[Generic] Error validating month ownership:', e.message);
+                  return res.json([]);
+                }
              } else {
                 // Scope by family_id
                 if (parsedQuery.family_id) {

@@ -19,6 +19,7 @@ import Obrigado from './pages/Obrigado';
 import Evolution from './pages/Evolution';
 import Goals from './pages/Goals';
 import HelpCenter from './pages/HelpCenter';
+import CreditCards from './pages/CreditCards';
 import __Layout from './Layout.jsx';
 
 
@@ -40,6 +41,7 @@ export const PAGES = {
     "Evolution": Evolution,
     "Goals": Goals,
     "HelpCenter": HelpCenter,
+    "CreditCards": CreditCards,
 }
 
 // Pages that don't require authentication

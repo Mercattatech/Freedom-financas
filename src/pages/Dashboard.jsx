@@ -115,6 +115,13 @@ export default function Dashboard() {
     enabled: !!month
   });
 
+  // Fetch credit cards
+  const { data: creditCards = [] } = useQuery({
+    queryKey: ['creditcards', family?.id],
+    queryFn: () => apiClient.entities.CreditCard.filter({ family_id: family.id, ativo: true }),
+    enabled: !!family
+  });
+
   // Create family mutation
   const createFamilyMutation = useMutation({
     mutationFn: async (familyData) => {
@@ -134,13 +141,21 @@ export default function Dashboard() {
   // Income mutations
   const saveIncomeMutation = useMutation({
     mutationFn: ({ data, id }) => id ? apiClient.entities.Income.update(id, data) : apiClient.entities.Income.create(data),
-    onSuccess: () => queryClient.invalidateQueries(['incomes'])
+    onSuccess: () => {
+      queryClient.invalidateQueries(['incomes']);
+      toast.success('Receita salva com sucesso!');
+    },
+    onError: (e) => toast.error('Erro ao salvar receita: ' + e.message)
   });
 
   // Expense mutations
   const saveExpenseMutation = useMutation({
     mutationFn: ({ data, id }) => id ? apiClient.entities.Expense.update(id, data) : apiClient.entities.Expense.create(data),
-    onSuccess: () => queryClient.invalidateQueries(['expenses'])
+    onSuccess: () => {
+      queryClient.invalidateQueries(['expenses']);
+      toast.success('Despesa salva com sucesso!');
+    },
+    onError: (e) => toast.error('Erro ao salvar despesa: ' + e.message)
   });
 
   const handleSaveIncome = (data, id) => {
@@ -391,6 +406,7 @@ export default function Dashboard() {
         monthId={month?.id}
         categories={categories}
         subcategories={subcategories}
+        creditCards={creditCards}
       />
     </div>
   );

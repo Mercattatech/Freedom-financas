@@ -84,6 +84,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Evolução', icon: LineChart, path: 'Evolution' },
     { name: 'Patrimônio', icon: TrendingUp, path: 'Wealth' },
     { name: 'Caixinhas', icon: PiggyBank, path: 'InvestmentBoxes' },
+    { name: 'Cartões', icon: CreditCard, path: 'CreditCards' },
     { name: 'Categorias', icon: Tag, path: 'Categories' },
     { name: 'Ações', icon: BarChart3, path: 'Stocks' },
     { name: 'Famílias', icon: Users, path: 'Families' },

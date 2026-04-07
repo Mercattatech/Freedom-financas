@@ -43,7 +43,8 @@ const emptyExpenseForm = () => ({
   subcategory_id: '', 
   forma_pagamento: 'PIX',
   is_recurring: false,
-  recurring_limit_date: ''
+  recurring_limit_date: '',
+  credit_card_id: ''
 });
 
 export default function Transactions() {
@@ -107,6 +108,13 @@ export default function Transactions() {
     queryKey: ['expenses', month?.id],
     queryFn: () => apiClient.entities.Expense.filter({ month_id: month.id }),
     enabled: !!month?.id
+  });
+
+  // ── Credit Cards ─────────────────────────────────────────
+  const { data: creditCards = [] } = useQuery({
+    queryKey: ['creditcards', family?.id],
+    queryFn: () => apiClient.entities.CreditCard.filter({ family_id: family.id, ativo: true }),
+    enabled: !!family
   });
 
   // ── Mutations ──────────────────────────────────────────────────
@@ -193,7 +201,8 @@ export default function Transactions() {
       category_id: expenseForm.category_id,
       subcategory_id: expenseForm.subcategory_id || undefined,
       forma_pagamento: expenseForm.forma_pagamento,
-      recorrente: expenseForm.is_recurring
+      recorrente: expenseForm.is_recurring,
+      credit_card_id: expenseForm.forma_pagamento === 'CREDITO' && expenseForm.credit_card_id ? expenseForm.credit_card_id : undefined
     };
     
     // Saves the expense itself
@@ -396,12 +405,27 @@ export default function Transactions() {
               </SelectContent>
             </Select>
           )}
-          <Select value={expenseForm.forma_pagamento} onValueChange={v => setExpenseForm(f => ({ ...f, forma_pagamento: v }))}>
+          <Select value={expenseForm.forma_pagamento} onValueChange={v => setExpenseForm(f => ({ ...f, forma_pagamento: v, credit_card_id: v !== 'CREDITO' ? '' : f.credit_card_id }))}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {PAYMENT_METHODS.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
             </SelectContent>
           </Select>
+          {expenseForm.forma_pagamento === 'CREDITO' && creditCards.filter(c => c.ativo !== false).length > 0 && (
+            <Select value={expenseForm.credit_card_id} onValueChange={v => setExpenseForm(f => ({ ...f, credit_card_id: v }))}>
+              <SelectTrigger><SelectValue placeholder="💳 Selecione o cartão" /></SelectTrigger>
+              <SelectContent>
+                {creditCards.filter(c => c.ativo !== false).map(card => (
+                  <SelectItem key={card.id} value={card.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: card.cor || '#6366F1' }} />
+                      {card.nome} {card.ultimos_digitos ? `(•••• ${card.ultimos_digitos})` : ''}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {!editingExpense && (
             <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg mt-2">
                <div>
