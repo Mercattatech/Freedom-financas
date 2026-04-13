@@ -167,10 +167,13 @@ export default function Dashboard() {
   };
 
   // Calculations
+  // Despesas de cartão ficam só no extrato do cartão; faturas (is_fatura_cartao=true) aparecem normalmente
+  const visibleExpenses = expenses.filter(e => !e.credit_card_id || e.is_fatura_cartao);
   const totalIncome = incomes.reduce((sum, i) => sum + (i.valor || 0), 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + (e.valor || 0), 0);
+  const totalExpenses = visibleExpenses.reduce((sum, e) => sum + (e.valor || 0), 0);
   const balance = totalIncome - totalExpenses;
   const totalDebt = debts.reduce((sum, d) => sum + (d.saldo_atual || 0), 0);
+
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -346,12 +349,12 @@ export default function Dashboard() {
           <div className="lg:col-span-2 space-y-6">
             <BudgetProgress
               categories={categories}
-              expenses={expenses}
+              expenses={visibleExpenses}
               budgets={budgets}
               totalIncome={totalIncome}
             />
             <RecentTransactions
-              expenses={expenses}
+              expenses={visibleExpenses}
               incomes={incomes}
               categories={categories}
             />
@@ -359,7 +362,7 @@ export default function Dashboard() {
           <div>
             <ExpenseChart
               categories={categories}
-              expenses={expenses}
+              expenses={visibleExpenses}
             />
           </div>
         </motion.div>
@@ -373,7 +376,7 @@ export default function Dashboard() {
         >
           <DRE
             incomes={incomes}
-            expenses={expenses}
+            expenses={visibleExpenses}
             debts={debts}
             categories={categories}
             investmentBoxes={investmentBoxes}
@@ -386,7 +389,7 @@ export default function Dashboard() {
         family={family}
         month={{ month_year: competencia }}
         incomes={incomes}
-        expenses={expenses}
+        expenses={visibleExpenses}
         debts={debts}
         balance={balance}
       />

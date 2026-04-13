@@ -1,6 +1,7 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
+const { triggerRecalculo } = require('../services/creditCardBill');
 
 const prisma = new PrismaClient();
 
@@ -146,6 +147,11 @@ function createGenericRouter() {
         if (entityParam === 'useraccesses') {
           await syncUserAccessWithAuth(req.body);
         }
+
+        // Fatura de cartão: recalcula após criar despesa com credit_card_id
+        if (entityParam === 'expenses' && newItem.credit_card_id && !newItem.is_fatura_cartao) {
+          triggerRecalculo(newItem, newItem.family_id).catch(console.error);
+        }
         
         return res.status(201).json(newItem);
       }
@@ -180,11 +186,28 @@ function createGenericRouter() {
           await syncUserAccessWithAuth(req.body);
         }
 
+        // Fatura de cartão: recalcula após atualizar despesa com credit_card_id
+        if (entityParam === 'expenses' && updatedItem.credit_card_id && !updatedItem.is_fatura_cartao) {
+          triggerRecalculo(updatedItem, updatedItem.family_id).catch(console.error);
+        }
+
         return res.json(updatedItem);
       }
       
       if (req.method === 'DELETE' && entityId) {
+        // Para despesas com cartão, busca antes de deletar para poder recalcular depois
+        let expenseParaRecalculo = null;
+        if (entityParam === 'expenses') {
+          expenseParaRecalculo = await model.findUnique({ where: { id: entityId } });
+        }
+
         await model.delete({ where: { id: entityId } });
+
+        // Recalcula fatura após deletar despesa de cartão
+        if (expenseParaRecalculo?.credit_card_id && !expenseParaRecalculo.is_fatura_cartao) {
+          triggerRecalculo(expenseParaRecalculo, expenseParaRecalculo.family_id).catch(console.error);
+        }
+
         return res.json({ success: true });
       }
 

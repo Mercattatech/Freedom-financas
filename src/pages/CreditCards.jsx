@@ -132,7 +132,10 @@ export default function CreditCards() {
   };
 
   const selectedCard = cards.find(c => c.id === selectedCardId);
-  const totalCardExpenses = cardExpenses.reduce((s, e) => s + (e.valor || 0), 0);
+  // Separa as compras reais da fatura auto-gerada
+  const realExpenses = cardExpenses.filter(e => !e.is_fatura_cartao);
+  const faturaAutoExp = cardExpenses.find(e => e.is_fatura_cartao);
+  const totalCardExpenses = realExpenses.reduce((s, e) => s + (e.valor || 0), 0);
   const limiteUsado = selectedCard?.limite ? (totalCardExpenses / selectedCard.limite) * 100 : 0;
 
   // ── Render ──
@@ -338,17 +341,38 @@ export default function CreditCards() {
             )}
           </div>
 
-          {/* Expenses list */}
+          {/* Próxima Fatura Banner */}
+          {(totalCardExpenses > 0) && (
+            <div className="mx-5 mb-1 mt-4 p-4 rounded-xl border-2 flex items-center justify-between"
+              style={{ borderColor: (selectedCard.cor || '#6366F1') + '60', backgroundColor: (selectedCard.cor || '#6366F1') + '10' }}>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: selectedCard.cor || '#6366F1' }}>Fatura a pagar</p>
+                <p className="text-2xl font-bold text-slate-800 mt-0.5">{fmt(totalCardExpenses)}</p>
+                {faturaAutoExp && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Vence: {faturaAutoExp.data ? format(new Date(faturaAutoExp.data + 'T00:00:00'), 'dd/MM/yyyy') : '—'}
+                    {' · '}despesa lançada automaticamente
+                  </p>
+                )}
+                {!faturaAutoExp && totalCardExpenses > 0 && (
+                  <p className="text-xs text-slate-400 mt-1">A fatura será lançada automaticamente ao fechar o ciclo</p>
+                )}
+              </div>
+              <div className="text-3xl">💳</div>
+            </div>
+          )}
+
+          {/* Expenses list - somente compras reais (exclui fatura auto-gerada) */}
           <div className="divide-y divide-slate-50">
             {loadingExpenses ? (
               <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-emerald-600" /></div>
-            ) : cardExpenses.length === 0 ? (
+            ) : realExpenses.length === 0 ? (
               <div className="text-center py-12 text-slate-400">
                 <Receipt className="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p>Nenhum gasto neste cartão no mês</p>
               </div>
             ) : (
-              cardExpenses
+              realExpenses
                 .sort((a, b) => (b.data || '').localeCompare(a.data || ''))
                 .map(exp => {
                   const cat = categories.find(c => c.id === exp.category_id);
@@ -374,12 +398,12 @@ export default function CreditCards() {
           </div>
 
           {/* Category Summary */}
-          {cardExpenses.length > 0 && (
+          {realExpenses.length > 0 && (
             <div className="p-5 border-t border-slate-100 bg-slate-50/50">
               <h4 className="text-sm font-semibold text-slate-700 mb-3">Gastos por Categoria</h4>
               <div className="space-y-2">
                 {Object.entries(
-                  cardExpenses.reduce((acc, exp) => {
+                  realExpenses.reduce((acc, exp) => {
                     const catName = categories.find(c => c.id === exp.category_id)?.nome || 'Sem categoria';
                     const catCor = categories.find(c => c.id === exp.category_id)?.cor || '#6B7280';
                     if (!acc[catName]) acc[catName] = { total: 0, cor: catCor };

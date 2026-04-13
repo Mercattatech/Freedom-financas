@@ -286,18 +286,21 @@ export default function Transactions() {
   };
 
   // ── Derived values ─────────────────────────────────────────────
+  // Despesas de cartão ficam só no extrato do cartão; faturas (is_fatura_cartao=true) aparecem normalmente
+  const visibleExpenses = expenses.filter(e => !e.credit_card_id || e.is_fatura_cartao);
   const totalIncomes = incomes.reduce((s, i) => s + (i.valor || 0), 0);
-  const totalExpenses = expenses.reduce((s, e) => s + (e.valor || 0), 0);
+  const totalExpenses = visibleExpenses.reduce((s, e) => s + (e.valor || 0), 0);
   const balance = totalIncomes - totalExpenses;
   const filteredSubs = subcategories.filter(s => s.category_id === expenseForm.category_id);
 
-  const filteredExpenses = expenses.filter(exp => {
+  const filteredExpenses = visibleExpenses.filter(exp => {
     if (filterCategory && exp.category_id !== filterCategory) return false;
     if (filterDesc && !exp.descricao?.toLowerCase().includes(filterDesc.toLowerCase())) return false;
     if (filterMinVal && (exp.valor || 0) < parseFloat(filterMinVal)) return false;
     if (filterMaxVal && (exp.valor || 0) > parseFloat(filterMaxVal)) return false;
     return true;
   });
+
   const hasActiveFilter = filterCategory || filterDesc || filterMinVal || filterMaxVal;
   const isLoading = loadingFamily || loadingIncomes || loadingExpenses;
 
@@ -365,7 +368,7 @@ export default function Transactions() {
           onClick={() => { setTab('expenses'); cancelForm(); }}
           className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${tab === 'expenses' ? 'bg-white shadow text-slate-800' : 'text-slate-500'}`}
         >
-          Despesas ({hasActiveFilter ? `${filteredExpenses.length}/` : ''}{expenses.length})
+          Despesas ({hasActiveFilter ? `${filteredExpenses.length}/` : ''}{visibleExpenses.length})
         </button>
         <button
           onClick={() => { setTab('incomes'); cancelForm(); }}

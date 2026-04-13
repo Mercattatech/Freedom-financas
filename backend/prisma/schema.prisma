@@ -120,21 +120,22 @@ model Income {
 }
 
 model Expense {
-  id              String   @id @default(uuid())
-  descricao       String
-  valor           Float
-  data            String
-  forma_pagamento String?
-  recorrente      Boolean  @default(false)
-  tags            String?  // JSON string or comma separated
-  notes           String?
-  month_id        String
-  category_id     String?
-  subcategory_id  String?
-  family_id       String?
-  credit_card_id  String?
-  created_date    DateTime @default(now())
-  updated_date    DateTime @updatedAt
+  id               String   @id @default(uuid())
+  descricao        String
+  valor            Float
+  data             String
+  forma_pagamento  String?
+  recorrente       Boolean  @default(false)
+  tags             String?  // JSON string or comma separated
+  notes            String?
+  month_id         String
+  category_id      String?
+  subcategory_id   String?
+  family_id        String?
+  credit_card_id   String?
+  is_fatura_cartao Boolean  @default(false) // Fatura auto-gerada pelo sistema
+  created_date     DateTime @default(now())
+  updated_date     DateTime @updatedAt
 
   month          FinancialMonth @relation(fields: [month_id], references: [id], onDelete: Cascade)
   category       Category?      @relation(fields: [category_id], references: [id])
