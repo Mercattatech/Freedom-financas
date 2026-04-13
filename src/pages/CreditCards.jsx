@@ -6,8 +6,10 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Trash2, Pencil, CreditCard as CreditCardIcon, Check, X, ChevronLeft, ChevronRight, Receipt, Eye, EyeOff } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Loader2, Plus, Trash2, Pencil, CreditCard as CreditCardIcon, Check, X, ChevronLeft, ChevronRight, Receipt, Eye, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 
 const BANDEIRAS = [
@@ -39,6 +41,11 @@ export default function CreditCards() {
   const [form, setForm] = useState(emptyForm());
   const [selectedCardId, setSelectedCardId] = useState(null);
   const [statementDate, setStatementDate] = useState(new Date());
+
+  // Expense edit/delete state
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [expenseForm, setExpenseForm] = useState({ descricao: '', valor: '', data: '', category_id: '' });
+  const [deleteConfirmExp, setDeleteConfirmExp] = useState(null);
 
   const competencia = format(statementDate, 'yyyy-MM');
 
@@ -97,6 +104,28 @@ export default function CreditCards() {
       if (selectedCardId) setSelectedCardId(null);
     }
   });
+
+  // Expense mutations
+  const saveExpenseMutation = useMutation({
+    mutationFn: ({ id, data }) => apiClient.entities.Expense.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      toast.success('Lançamento atualizado!');
+      setEditingExpense(null);
+    },
+    onError: (e) => toast.error('Erro ao salvar: ' + e.message)
+  });
+
+  const deleteExpenseMutation = useMutation({
+    mutationFn: (id) => apiClient.entities.Expense.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      toast.success('Lançamento excluído!');
+      setDeleteConfirmExp(null);
+    },
+    onError: () => toast.error('Erro ao excluir lançamento')
+  });
+
 
   // ── Handlers ──
   const cancelForm = () => { setShowForm(false); setEditing(null); setForm(emptyForm()); };
@@ -377,20 +406,43 @@ export default function CreditCards() {
                 .map(exp => {
                   const cat = categories.find(c => c.id === exp.category_id);
                   return (
-                    <div key={exp.id} className="px-5 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
-                          style={{ backgroundColor: (cat?.cor || '#6B7280') + '20' }}>
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat?.cor || '#6B7280' }} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{exp.descricao}</p>
-                          <p className="text-xs text-slate-500">
-                            {exp.data ? format(new Date(exp.data + 'T00:00:00'), "dd/MM/yyyy") : '—'} · {cat?.nome || '—'}
-                          </p>
-                        </div>
+                    <div key={exp.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors group">
+                      <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
+                        style={{ backgroundColor: (cat?.cor || '#6B7280') + '20' }}>
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat?.cor || '#6B7280' }} />
                       </div>
-                      <span className="font-bold text-red-600 text-sm flex-shrink-0 ml-3">{fmt(exp.valor)}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-800 truncate">{exp.descricao}</p>
+                        <p className="text-xs text-slate-500">
+                          {exp.data ? format(new Date(exp.data + 'T00:00:00'), "dd/MM/yyyy") : '—'} · {cat?.nome || '—'}
+                        </p>
+                      </div>
+                      <span className="font-bold text-red-600 text-sm flex-shrink-0">{fmt(exp.valor)}</span>
+                      {/* Action buttons */}
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingExpense(exp);
+                            setExpenseForm({
+                              descricao: exp.descricao || '',
+                              valor: String(exp.valor || ''),
+                              data: exp.data || '',
+                              category_id: exp.category_id || ''
+                            });
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          title="Editar"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmExp(exp)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -435,6 +487,122 @@ export default function CreditCards() {
           )}
         </div>
       )}
+
+      {/* ── Expense Edit Modal ── */}
+      <ExpenseEditModal
+        expense={editingExpense}
+        form={expenseForm}
+        setForm={setExpenseForm}
+        categories={categories}
+        isSaving={saveExpenseMutation.isPending}
+        onClose={() => setEditingExpense(null)}
+        onSave={(data) => saveExpenseMutation.mutate({ id: editingExpense.id, data })}
+      />
+
+      {/* ── Expense Delete Confirm ── */}
+      <Dialog open={!!deleteConfirmExp} onOpenChange={(v) => { if (!v) setDeleteConfirmExp(null); }}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" /> Excluir Lançamento
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-700 py-2">
+            Deseja excluir <strong>"{deleteConfirmExp?.descricao}"</strong> — {fmt(deleteConfirmExp?.valor)}?
+          </p>
+          <p className="text-xs text-slate-500">A fatura será recalculada automaticamente.</p>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setDeleteConfirmExp(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              disabled={deleteExpenseMutation.isPending}
+              onClick={() => deleteExpenseMutation.mutate(deleteConfirmExp.id)}
+            >
+              {deleteExpenseMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4 mr-1" />}
+              Excluir
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────
+   Expense Edit Modal
+───────────────────────────────────────────────────────── */
+function ExpenseEditModal({ expense, form, setForm, categories, onSave, onClose, isSaving }) {
+  if (!expense) return null;
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Editar Lançamento</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <div className="space-y-2">
+            <Label>Descrição *</Label>
+            <input
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={form.descricao}
+              onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))}
+              placeholder="Ex: Almoço"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Valor (R$) *</Label>
+            <input
+              type="number" step="0.01" min="0"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={form.valor}
+              onChange={e => setForm(f => ({ ...f, valor: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Data *</Label>
+            <input
+              type="date"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={form.data}
+              onChange={e => setForm(f => ({ ...f, data: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Categoria</Label>
+            <Select value={form.category_id || 'none'} onValueChange={v => setForm(f => ({ ...f, category_id: v === 'none' ? '' : v }))}>
+              <SelectTrigger><SelectValue placeholder="Sem categoria" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem categoria</SelectItem>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.cor || '#6B7280' }} />
+                      {c.nome}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button variant="outline" className="flex-1" onClick={onClose}>Cancelar</Button>
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              disabled={isSaving}
+              onClick={() => onSave({
+                descricao: form.descricao,
+                valor: parseFloat(form.valor) || 0,
+                data: form.data,
+                category_id: form.category_id || null
+              })}
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 mr-1" />}
+              Salvar
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

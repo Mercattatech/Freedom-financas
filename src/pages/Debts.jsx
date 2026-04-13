@@ -16,6 +16,7 @@ import { motion } from "framer-motion";
 
 import DebtModal from '@/components/modals/DebtModal';
 
+
 export default function Debts() {
   const queryClient = useQueryClient();
   const [debtModalOpen, setDebtModalOpen] = useState(false);
@@ -51,6 +52,23 @@ export default function Debts() {
   const { data: payments = [] } = useQuery({
     queryKey: ['debtPayments'],
     queryFn: () => apiClient.entities.DebtPayment.list()
+  });
+
+  // ── Credit Card Faturas ──
+  const { data: creditCards = [] } = useQuery({
+    queryKey: ['creditcards', family?.id],
+    queryFn: () => apiClient.entities.CreditCard.filter({ family_id: family.id, ativo: true }),
+    enabled: !!family
+  });
+  // Busca todas as expenses que são faturas auto-geradas da família
+  const { data: allFaturas = [] } = useQuery({
+    queryKey: ['faturas-cartao', family?.id],
+    queryFn: async () => {
+      // Busca expenses is_fatura_cartao=true via filter
+      const resp = await apiClient.entities.Expense.filter({ family_id: family.id, is_fatura_cartao: true });
+      return resp;
+    },
+    enabled: !!family
   });
 
   const saveDebtMutation = useMutation({
@@ -144,6 +162,10 @@ export default function Debts() {
   const totalPaid = totalInitial - totalDebt;
   const progressPercent = totalInitial > 0 ? ((totalPaid / totalInitial) * 100) : 0;
 
+  // Total de faturas de cartão pendentes
+  const totalFaturas = allFaturas.reduce((s, f) => s + (f.valor || 0), 0);
+  const fmt = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -179,6 +201,9 @@ export default function Debts() {
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wide">Saldo Devedor</p>
             </div>
             <p className="text-2xl font-bold text-slate-900">{formatCurrency(totalDebt)}</p>
+            {totalFaturas > 0 && (
+              <p className="text-xs text-slate-500 mt-1">+ {fmt(totalFaturas)} em faturas de cartão</p>
+            )}
           </Card>
           <Card className="p-6 border-0 shadow-sm">
             <div className="flex items-center gap-3 mb-2">
@@ -315,6 +340,89 @@ export default function Debts() {
             </div>
           )}
         </motion.div>
+
+        {/* ── Faturas de Cartão ── */}
+        {creditCards.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="space-y-4 mb-8"
+          >
+            <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-purple-600" /> Faturas de Cartão
+            </h2>
+            <div className="grid gap-3">
+              {creditCards.map(card => {
+                const fatura = allFaturas.find(f => f.credit_card_id === card.id);
+                const valor = fatura?.valor || 0;
+                const vencimento = fatura?.data;
+                const limiteUsado = card.limite > 0 ? (valor / card.limite) * 100 : 0;
+                const hoje = new Date();
+                const vencDate = vencimento ? new Date(vencimento + 'T00:00:00') : null;
+                const diasVenc = vencDate ? Math.ceil((vencDate - hoje) / (1000 * 60 * 60 * 24)) : null;
+                const isVencida = diasVenc !== null && diasVenc < 0;
+                const isProxima = diasVenc !== null && diasVenc <= 7 && diasVenc >= 0;
+
+                return (
+                  <Card key={card.id} className={`p-5 border-0 shadow-sm ${
+                    isVencida ? 'bg-red-50 ring-1 ring-red-200' :
+                    isProxima ? 'bg-amber-50 ring-1 ring-amber-200' : ''
+                  }`}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                          style={{ backgroundColor: card.cor || '#6366F1' }}>
+                          <CreditCard className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-800">{card.nome}</p>
+                          <p className="text-xs text-slate-500">
+                            {card.ultimos_digitos ? `•••• ${card.ultimos_digitos} · ` : ''}
+                            Fecha dia {card.dia_fechamento} · Vence dia {card.dia_vencimento}
+                          </p>
+                          {vencimento && (
+                            <p className={`text-xs font-medium mt-0.5 ${
+                              isVencida ? 'text-red-600' : isProxima ? 'text-amber-600' : 'text-slate-500'
+                            }`}>
+                              {isVencida
+                                ? `⚠️ Vencida há ${Math.abs(diasVenc)} dias`
+                                : isProxima
+                                ? `⏰ Vence em ${diasVenc} dia${diasVenc !== 1 ? 's' : ''}`
+                                : `Vence em ${format(new Date(vencimento + 'T00:00:00'), 'dd/MM/yyyy')}`
+                              }
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        {valor > 0 ? (
+                          <>
+                            <p className="text-xl font-bold text-slate-900">{fmt(valor)}</p>
+                            {card.limite > 0 && (
+                              <>
+                                <div className="w-28 h-1.5 bg-slate-200 rounded-full mt-2 overflow-hidden">
+                                  <div className="h-full rounded-full transition-all"
+                                    style={{
+                                      width: `${Math.min(limiteUsado, 100)}%`,
+                                      backgroundColor: limiteUsado > 90 ? '#EF4444' : limiteUsado > 70 ? '#F97316' : '#6366F1'
+                                    }} />
+                                </div>
+                                <p className="text-xs text-slate-400 mt-0.5 text-right">{limiteUsado.toFixed(0)}% do limite</p>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <Badge className="bg-emerald-100 text-emerald-700">Sem débito</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
 
         {/* Paid Debts */}
         {paidDebts.length > 0 && (
