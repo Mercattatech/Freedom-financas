@@ -2,7 +2,72 @@ const express = require('express');
 const router = express.Router();
 const Stripe = require('stripe');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
+
+// ────────────────────────────────────────────
+// Helper: envia email de boas-vindas com link para definir senha
+// ────────────────────────────────────────────
+async function sendWelcomeEmail({ email, nome, resetToken, planNome, trialDias }) {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('[EMAIL] RESEND_API_KEY não configurado — email não enviado');
+    return;
+  }
+  const frontendUrl = process.env.FRONTEND_URL || 'https://mercattafreedom.com.br';
+  const setupLink = `${frontendUrl}/ResetPassword?token=${resetToken}`;
+  const { Resend } = require('resend');
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from = process.env.RESEND_FROM_EMAIL || 'Freedom App <onboarding@resend.dev>';
+
+  try {
+    await resend.emails.send({
+      from,
+      to: email,
+      subject: '🎉 Sua conta Freedom está pronta! Configure sua senha',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #10b981, #0d9488); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🎉 Bem-vindo ao Freedom!</h1>
+            <p style="color: #d1fae5; margin: 10px 0 0;">Gestão Financeira Familiar</p>
+          </div>
+
+          <p style="color: #374151; font-size: 16px;">Olá${nome ? ', ' + nome : ''}!</p>
+          <p style="color: #374151; font-size: 16px;">
+            Seu pagamento foi processado e sua assinatura do plano <strong>${planNome || 'Freedom'}</strong> está ativa!
+            Você tem <strong>${trialDias || 7} dias grátis</strong> para explorar tudo.
+          </p>
+
+          <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 20px; margin: 25px 0;">
+            <p style="color: #166534; font-weight: bold; margin: 0 0 8px;">✅ O que está incluído:</p>
+            <p style="color: #15803d; margin: 4px 0;">• Dashboard financeiro completo</p>
+            <p style="color: #15803d; margin: 4px 0;">• Controle de cartões de crédito</p>
+            <p style="color: #15803d; margin: 4px 0;">• Metas e investimentos</p>
+            <p style="color: #15803d; margin: 4px 0;">• Relatórios e DRE mensal</p>
+          </div>
+
+          <p style="color: #374151; font-size: 16px;">Para acessar, você precisa <strong>criar uma senha</strong>. Clique no botão abaixo:</p>
+
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${setupLink}"
+               style="background: #10b981; color: white; padding: 14px 32px; text-decoration: none;
+                      border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">
+              🔐 Criar minha senha e acessar
+            </a>
+          </div>
+
+          <p style="color: #9ca3af; font-size: 13px; text-align: center;">
+            Este link expira em 24 horas.<br>
+            Dúvidas? Responda este email.
+          </p>
+        </div>
+      `
+    });
+    console.log(`[EMAIL] ✅ Email de boas-vindas enviado para ${email}`);
+  } catch (err) {
+    console.error('[EMAIL] ❌ Erro ao enviar email:', err.message);
+  }
+}
 
 const prisma = new PrismaClient();
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
@@ -209,16 +274,60 @@ router.post('/webhooks', express.raw({ type: 'application/json' }), async (req, 
 
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const userId = session.metadata?.user_id;
         const planId = session.metadata?.plan_id;
-        if (!userId) break;
+        let userId = session.metadata?.user_id;
 
-        const subscription = await stripe.subscriptions.retrieve(session.subscription);
+        // Busca o plano para info no email
         const plan = planId ? await prisma.plan.findUnique({ where: { id: planId } }) : null;
+        const subscription = await stripe.subscriptions.retrieve(session.subscription);
 
+        // Busca o customer no Stripe para pegar o email
+        const stripeCustomer = await stripe.customers.retrieve(session.customer);
+        const customerEmail = stripeCustomer.email;
+        const customerName = stripeCustomer.name || '';
+
+        let user = null;
+        let isNewUser = false;
+
+        // 1. Tenta achar pelo user_id da sessão (usuário já logado que assinou)
+        if (userId) {
+          user = await prisma.user.findUnique({ where: { id: userId } });
+        }
+
+        // 2. Tenta achar pelo email do Stripe customer
+        if (!user && customerEmail) {
+          user = await prisma.user.findUnique({ where: { email: customerEmail } });
+        }
+
+        // 3. Não existe → cria conta nova automaticamente
+        if (!user && customerEmail) {
+          isNewUser = true;
+          const tempPassword = await bcrypt.hash(Math.random().toString(36), 10);
+          user = await prisma.user.create({
+            data: {
+              email: customerEmail,
+              full_name: customerName || null,
+              password: tempPassword,
+              is_verified: true,
+              disabled: false,
+              role: 'user',
+              must_change_password: true,
+              stripe_customer_id: session.customer
+            }
+          });
+          console.log(`[STRIPE] 🆕 Novo usuário criado automaticamente: ${customerEmail}`);
+        }
+
+        if (!user) {
+          console.error('[STRIPE] ❌ Não foi possível encontrar/criar usuário para o checkout:', customerEmail);
+          break;
+        }
+
+        // 4. Ativa a assinatura
         await prisma.user.update({
-          where: { id: userId },
+          where: { id: user.id },
           data: {
+            stripe_customer_id: session.customer,
             stripe_subscription_id: session.subscription,
             subscription_status: subscription.status, // trialing | active
             plan_id: planId || null,
@@ -230,7 +339,23 @@ router.post('/webhooks', express.raw({ type: 'application/json' }), async (req, 
             is_verified: true
           }
         });
-        console.log(`[STRIPE] ✅ Assinatura ativada para user ${userId}`);
+
+        // 5. Envia email de boas-vindas com link para definir senha
+        const resetToken = jwt.sign(
+          { id: user.id, purpose: 'password_reset' },
+          process.env.JWT_SECRET,
+          { expiresIn: '24h' }
+        );
+
+        await sendWelcomeEmail({
+          email: customerEmail,
+          nome: customerName,
+          resetToken,
+          planNome: plan?.nome || 'Freedom',
+          trialDias: plan?.trial_dias || 7
+        });
+
+        console.log(`[STRIPE] ✅ Assinatura ativada para ${customerEmail} (${isNewUser ? 'novo usuário' : 'usuário existente'})`);
         break;
       }
 
