@@ -14,6 +14,7 @@ import InvestmentBoxes from './pages/InvestmentBoxes';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Pricing from './pages/Pricing';
+import ResetPassword from './pages/ResetPassword';
 import Stocks from './pages/Stocks';
 import Transactions from './pages/Transactions';
 import Wealth from './pages/Wealth';
@@ -39,6 +40,7 @@ export const PAGES = {
     "LandingPage": LandingPage,
     "Login": Login,
     "Pricing": Pricing,
+    "ResetPassword": ResetPassword,
     "Stocks": Stocks,
     "Transactions": Transactions,
     "Wealth": Wealth,
@@ -50,7 +52,7 @@ export const PAGES = {
 }
 
 // Pages that don't require authentication
-export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado', 'Pricing', 'CheckoutSuccess'];
+export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado', 'Pricing', 'CheckoutSuccess', 'ResetPassword'];
 
 export const pagesConfig = {
     mainPage: "LandingPage",

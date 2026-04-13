@@ -260,9 +260,10 @@ router.post('/send-reminder', authenticateToken, async (req, res) => {
 // POST /api/auth/reset-password
 router.post('/reset-password', async (req, res) => {
   try {
-    const { token, newPassword } = req.body;
+    const { token, newPassword, new_password } = req.body;
+    const pwd = new_password || newPassword;
     
-    if (!token || !newPassword || newPassword.length < 6) {
+    if (!token || !pwd || pwd.length < 6) {
       return res.status(400).json({ status: 400, message: 'Dados inválidos.' });
     }
 
@@ -279,15 +280,37 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcrypt.hash(pwd, 10);
 
     // Update user password
-    await prisma.user.update({
+    const user = await prisma.user.update({
       where: { id: decoded.id },
-      data: { password: hashedPassword }
+      data: {
+        password: hashedPassword,
+        must_change_password: false,
+        is_verified: true,
+        disabled: false
+      }
     });
 
-    return res.json({ success: true, message: 'Senha redefinida com sucesso!' });
+    // Gera token de acesso para auto-login
+    const access_token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Senha definida com sucesso!',
+      access_token,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role
+      }
+    });
   } catch (error) {
     console.error('Error in reset-password:', error);
     res.status(500).json({ status: 500, message: 'Erro interno ao redefinir a senha.' });
