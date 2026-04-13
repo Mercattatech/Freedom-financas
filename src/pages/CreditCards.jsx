@@ -406,7 +406,7 @@ export default function CreditCards() {
                 .map(exp => {
                   const cat = categories.find(c => c.id === exp.category_id);
                   return (
-                    <div key={exp.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors group">
+                    <div key={exp.id} className="px-5 py-3 flex items-center gap-3 hover:bg-slate-50 transition-colors">
                       <div className="w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center"
                         style={{ backgroundColor: (cat?.cor || '#6B7280') + '20' }}>
                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: cat?.cor || '#6B7280' }} />
@@ -418,8 +418,8 @@ export default function CreditCards() {
                         </p>
                       </div>
                       <span className="font-bold text-red-600 text-sm flex-shrink-0">{fmt(exp.valor)}</span>
-                      {/* Action buttons */}
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      {/* Action buttons - always visible */}
+                      <div className="flex gap-1 flex-shrink-0">
                         <button
                           onClick={() => {
                             setEditingExpense(exp);
@@ -430,17 +430,17 @@ export default function CreditCards() {
                               category_id: exp.category_id || ''
                             });
                           }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                          title="Editar"
+                          className="p-2 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                          title="Editar lançamento"
                         >
-                          <Pencil className="w-3.5 h-3.5" />
+                          <Pencil className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirmExp(exp)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Excluir"
+                          className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Excluir lançamento"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
