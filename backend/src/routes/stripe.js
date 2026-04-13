@@ -15,7 +15,7 @@ async function sendWelcomeEmail({ email, nome, resetToken, planNome, trialDias }
     return;
   }
   const frontendUrl = process.env.FRONTEND_URL || 'https://mercattafreedom.com.br';
-  const setupLink = `${frontendUrl}/ResetPassword?token=${resetToken}`;
+  const setupLink = `${frontendUrl}/ResetPassword?token=${encodeURIComponent(resetToken)}`;
   const { Resend } = require('resend');
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.RESEND_FROM_EMAIL || 'Freedom App <onboarding@resend.dev>';
