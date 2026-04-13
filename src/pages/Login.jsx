@@ -1,15 +1,18 @@
 // @ts-nocheck
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '@/api/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, Eye, EyeOff, Mail, Lock, User, ArrowRight, ArrowLeft, CheckCircle2, KeyRound } from 'lucide-react';
+import { Loader2, Eye, EyeOff, Mail, Lock, User, ArrowRight, ArrowLeft, CheckCircle2, KeyRound, CheckCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 export default function Login() {
-  const [mode, setMode] = useState('login'); // login, register, forgot, reset-sent
+  const [searchParams] = useSearchParams();
+  const setupToken = searchParams.get('token');
+  const [mode, setMode] = useState(setupToken ? 'setup-password' : 'login');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
@@ -172,6 +175,42 @@ export default function Login() {
     }
   };
 
+  // ── SETUP PASSWORD (novo assinante vindo do email) ──────────────
+  const [setupPwd, setSetupPwd] = useState('');
+  const [setupPwdConfirm, setSetupPwdConfirm] = useState('');
+  const [setupDone, setSetupDone] = useState(false);
+
+  const handleSetupPassword = async (e) => {
+    e.preventDefault();
+    if (setupPwd.length < 6) { toast.error('Mínimo 6 caracteres'); return; }
+    if (setupPwd !== setupPwdConfirm) { toast.error('As senhas não coincidem'); return; }
+    setLoading(true);
+    try {
+      const baseUrl = import.meta.env.VITE_API_URL || '/api';
+      const res = await fetch(`${baseUrl}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: decodeURIComponent(setupToken), new_password: setupPwd })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || 'Link inválido ou expirado');
+        return;
+      }
+      if (data.access_token) {
+        localStorage.setItem('access_token', data.access_token);
+        if (data.user) localStorage.setItem('user', JSON.stringify(data.user));
+      }
+      setSetupDone(true);
+      toast.success('Senha criada! Entrando no sistema...');
+      setTimeout(() => { window.location.href = '/Dashboard'; }, 1800);
+    } catch (err) {
+      toast.error('Erro de conexão. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 flex items-center justify-center p-4">
       {/* Background decorations */}
@@ -199,6 +238,73 @@ export default function Login() {
         {/* Card */}
         <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-8 shadow-2xl">
           <AnimatePresence mode="wait">
+
+            {/* SETUP PASSWORD — novo assinante */}
+            {mode === 'setup-password' && (
+              <motion.div key="setup" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                {setupDone ? (
+                  <div className="text-center py-4">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto mb-4">
+                      <CheckCircle className="w-8 h-8 text-emerald-400" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mb-2">Tudo certo! 🎉</h2>
+                    <p className="text-slate-400">Entrando no dashboard...</p>
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-400 mx-auto mt-4" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mb-4">
+                      <Lock className="w-7 h-7 text-emerald-400" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mb-1">Criar sua senha</h2>
+                    <p className="text-slate-400 text-sm mb-6">Defina uma senha para acessar o Freedom</p>
+                    <form onSubmit={handleSetupPassword} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-slate-300 text-sm">Nova senha</Label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                          <Input
+                            type={showPassword ? 'text' : 'password'}
+                            value={setupPwd}
+                            onChange={e => setSetupPwd(e.target.value)}
+                            placeholder="Mínimo 6 caracteres"
+                            className="pl-10 pr-10 bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 h-12 rounded-xl"
+                            minLength={6}
+                            required
+                          />
+                          <button type="button" onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300 text-sm">Confirmar senha</Label>
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          value={setupPwdConfirm}
+                          onChange={e => setSetupPwdConfirm(e.target.value)}
+                          placeholder="Repita a senha"
+                          className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-500 h-12 rounded-xl"
+                          required
+                        />
+                        {setupPwdConfirm && setupPwd !== setupPwdConfirm && (
+                          <p className="text-red-400 text-xs">As senhas não coincidem</p>
+                        )}
+                        {setupPwdConfirm && setupPwd === setupPwdConfirm && setupPwd.length >= 6 && (
+                          <p className="text-emerald-400 text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Senhas coincidem</p>
+                        )}
+                      </div>
+                      <Button type="submit" disabled={loading || setupPwd !== setupPwdConfirm || setupPwd.length < 6}
+                        className="w-full h-12 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/30 text-base">
+                        {loading ? <><Loader2 className="w-5 h-5 animate-spin mr-2" /> Salvando...</> : <>🔐 Criar senha e acessar <ArrowRight className="w-5 h-5 ml-2" /></>}
+                      </Button>
+                    </form>
+                  </>
+                )}
+              </motion.div>
+            )}
+
             {/* LOGIN */}
             {mode === 'login' && (
               <motion.div
