@@ -7,6 +7,9 @@ const app = express();
 const prisma = new PrismaClient();
 const port = process.env.PORT || 3000;
 
+// ⚠️ WEBHOOK DEVE VIR ANTES DO express.json() (precisa de raw body)
+app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -29,6 +32,8 @@ app.use('/api/categories', require('./routes/categories'));
 app.use('/api/subcategories', require('./routes/subcategories'));
 app.use('/api/functions', require('./routes/functions'));
 app.use('/api/upload', require('./routes/upload'));
+app.use('/api/stripe', require('./routes/stripe'));
+app.use('/api/admin', require('./routes/admin'));
 
 // Catch-all generic routes for other entities (FinancialMonths, Incomes, etc)
 const genericRouter = require('./routes/generic');
@@ -57,6 +62,10 @@ if (fs.existsSync(frontendPath)) {
 }
 
 if (require.main === module) {
+  // Inicia cron de inadimplência
+  const { startDelinquencyCron } = require('./jobs/delinquencyCron');
+  startDelinquencyCron();
+
   app.listen(port, () => {
     console.log(`🚀 Freedom Backend Server running on http://localhost:${port}`);
   });

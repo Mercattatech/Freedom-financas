@@ -375,8 +375,14 @@ function PlansEditor() {
   );
 }
 
+// ─── SUBSCRIBERS EMBED ──────────────────────────────────────────────────────
+import AdminSubscribersInner from '../pages/AdminSubscribers';
+function AdminSubscribersEmbed() {
+  return <AdminSubscribersInner />;
+}
+
 export default function Admin() {
-  const [tab, setTab] = useState('users');
+  const [tab, setTab] = useState('subscribers');
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -454,6 +460,7 @@ export default function Admin() {
 
         {/* Main content */}
         <main className="ml-64 flex-1 min-h-screen bg-slate-950 p-8">
+          {tab === 'subscribers' && <AdminSubscribersEmbed />}
           {tab === 'payments' && <AdminPayments />}
           {tab === 'users' && <AdminUsers />}
           {tab === 'accounts' && <AdminAccounts />}

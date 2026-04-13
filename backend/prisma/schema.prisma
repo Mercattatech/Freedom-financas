@@ -22,10 +22,24 @@ model User {
   last_weekly_reset DateTime?
   created_date DateTime @default(now())
   updated_date DateTime @updatedAt
-  
+
+  // ── Stripe / Assinatura ──
+  stripe_customer_id     String?   // cus_xxx
+  stripe_subscription_id String?   // sub_xxx
+  subscription_status    String?   @default("inactive")
+  // inactive | trialing | active | past_due | canceled | blocked
+  plan_id                String?
+  trial_ends_at          DateTime?
+  current_period_end     DateTime?
+  delinquent_since       DateTime? // quando ficou inadimplente
+  blocked_at             DateTime?
+  blocked_by             String?   // email do admin
+
   // Relations
   families     Family[] @relation("FamilyCreator")
+  plan         Plan?    @relation(fields: [plan_id], references: [id])
 }
+
 
 model Family {
   id           String   @id @default(uuid())
@@ -306,24 +320,33 @@ model UserAccess {
 }
 
 model Plan {
-  id                   String   @id @default(uuid())
-  nome                 String
-  descricao            String?
-  tipo                 String   @default("MENSAL")
-  preco                Float
-  preco_original       Float?
-  features             String?
-  destaque             Boolean  @default(false)
-  badge                String?
-  upsell_texto         String?
-  upsell_price_id      String?
-  limite_familias      Int      @default(1)
-  cor                  String?
-  ordem                Int      @default(0)
-  ativo                Boolean  @default(true)
-  stripe_price_id      String?
-  created_date         DateTime @default(now())
-  updated_date         DateTime @updatedAt
+  id                       String   @id @default(uuid())
+  nome                     String
+  descricao                String?
+  tipo                     String   @default("MENSAL")
+  preco                    Float    // preço de exibição
+  preco_mensal             Float    @default(0)
+  preco_anual              Float?
+  preco_original           Float?
+  features                 String?  // JSON array
+  destaque                 Boolean  @default(false)
+  badge                    String?
+  upsell_texto             String?
+  limite_familias          Int      @default(1)
+  cor                      String?
+  ordem                    Int      @default(0)
+  ativo                    Boolean  @default(true)
+  trial_dias               Int      @default(7)
+  // Stripe IDs
+  stripe_product_id        String?  // prod_xxx (criado automaticamente)
+  stripe_price_id          String?  // price_xxx (mensal legado)
+  stripe_price_id_mensal   String?  // price_xxx mensal
+  stripe_price_id_anual    String?  // price_xxx anual
+  upsell_price_id          String?
+  created_date             DateTime @default(now())
+  updated_date             DateTime @updatedAt
+
+  users    User[]
 }
 
 model LandingCms {

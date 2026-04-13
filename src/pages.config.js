@@ -1,17 +1,19 @@
 /**
  * pages.config.js - Page routing configuration
- * Updated with new pages: Login, Evolution, Goals, RecurringExpenses
  */
 import Admin from './pages/Admin';
 import AdminPlans from './pages/AdminPlans';
+import AdminSubscribers from './pages/AdminSubscribers';
 import Budget from './pages/Budget';
 import Categories from './pages/Categories';
+import CheckoutSuccess from './pages/CheckoutSuccess';
 import Dashboard from './pages/Dashboard';
 import Debts from './pages/Debts';
 import Families from './pages/Families';
 import InvestmentBoxes from './pages/InvestmentBoxes';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
+import Pricing from './pages/Pricing';
 import Stocks from './pages/Stocks';
 import Transactions from './pages/Transactions';
 import Wealth from './pages/Wealth';
@@ -26,14 +28,17 @@ import __Layout from './Layout.jsx';
 export const PAGES = {
     "Admin": Admin,
     "AdminPlans": AdminPlans,
+    "AdminSubscribers": AdminSubscribers,
     "Budget": Budget,
     "Categories": Categories,
+    "CheckoutSuccess": CheckoutSuccess,
     "Dashboard": Dashboard,
     "Debts": Debts,
     "Families": Families,
     "InvestmentBoxes": InvestmentBoxes,
     "LandingPage": LandingPage,
     "Login": Login,
+    "Pricing": Pricing,
     "Stocks": Stocks,
     "Transactions": Transactions,
     "Wealth": Wealth,
@@ -45,7 +50,7 @@ export const PAGES = {
 }
 
 // Pages that don't require authentication
-export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado'];
+export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado', 'Pricing', 'CheckoutSuccess'];
 
 export const pagesConfig = {
     mainPage: "LandingPage",
