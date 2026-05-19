@@ -373,4 +373,33 @@ router.delete('/plans/:id', authenticateToken, onlyAdmin, async (req, res) => {
   }
 });
 
+// ────────────────────────────────────────────
+// SYSTEM CONFIG CRUD
+// ────────────────────────────────────────────
+
+// GET /api/admin/config
+router.get('/config', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const configs = await prisma.systemConfig.findMany();
+    res.json({ data: configs });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /api/admin/config
+router.post('/config', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const { key, value, description } = req.body;
+    const config = await prisma.systemConfig.upsert({
+      where: { key },
+      update: { value, description },
+      create: { key, value, description }
+    });
+    res.json({ data: config });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;

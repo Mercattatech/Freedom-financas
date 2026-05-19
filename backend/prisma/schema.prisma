@@ -35,9 +35,59 @@ model User {
   blocked_at             DateTime?
   blocked_by             String?   // email do admin
 
+  // ── WhatsApp ──
+  whatsapp_phone         String?   @unique
+
   // Relations
   families     Family[] @relation("FamilyCreator")
   plan         Plan?    @relation(fields: [plan_id], references: [id])
+}
+
+model WhatsappMessage {
+  id               String   @id @default(uuid())
+  user_id          String?
+  phone            String
+  meta_message_id  String   @unique
+  direction        String   // incoming / outgoing
+  message_type     String   // text, audio, image, etc
+  raw_payload      Json
+  message_text     String?
+  status           String   @default("received") // received, processed, ignored, error, sent
+  error_message    String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
+}
+
+model WhatsappSession {
+  id                      String   @id @default(uuid())
+  user_id                 String
+  phone                   String
+  state                   String   @default("idle") // idle, awaiting_missing_info, awaiting_confirmation, completed, cancelled
+  intent                  String?
+  extracted_data          Json?
+  missing_fields          Json?
+  pending_action          Json?
+  last_incoming_message_at DateTime @default(now())
+  expires_at              DateTime
+  created_at              DateTime @default(now())
+  updated_at              DateTime @updatedAt
+
+  @@index([phone])
+}
+
+model WhatsappFinancialAction {
+  id                 String   @id @default(uuid())
+  user_id            String
+  phone              String
+  session_id         String
+  action_type        String   // create_expense, create_income, etc
+  extracted_data     Json
+  confirmation_status String   @default("pending") // pending, confirmed, rejected, expired
+  related_record_type String?  // Expense, Income, etc
+  related_record_id   String?
+  error_message      String?
+  confirmed_at       DateTime?
+  created_at         DateTime @default(now())
 }
 
 
@@ -424,4 +474,12 @@ model CreditCard {
 
   family          Family   @relation(fields: [family_id], references: [id], onDelete: Cascade)
   expenses        Expense[]
+}
+
+model SystemConfig {
+  id          String   @id @default("singleton")
+  key         String   @unique
+  value       String
+  description String?
+  updated_at  DateTime @updatedAt
 }

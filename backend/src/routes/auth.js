@@ -338,4 +338,32 @@ router.post('/update-password-first-access', authenticateToken, async (req, res)
   }
 });
 
+// POST /api/auth/update-profile
+router.post('/update-profile', authenticateToken, async (req, res) => {
+  try {
+    const { full_name, whatsapp_phone } = req.body;
+    
+    const updateData = {};
+    if (full_name !== undefined) updateData.full_name = full_name;
+    if (whatsapp_phone !== undefined) {
+      // Limpar formatação (remover +, -, espaços)
+      const cleanPhone = whatsapp_phone.replace(/\D/g, '');
+      updateData.whatsapp_phone = cleanPhone;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: updateData,
+      select: { id: true, email: true, full_name: true, whatsapp_phone: true }
+    });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(400).json({ status: 400, message: 'Este número de WhatsApp já está vinculado a outra conta.' });
+    }
+    res.status(500).json({ status: 500, message: 'Erro interno ao atualizar perfil.' });
+  }
+});
+
 module.exports = router;

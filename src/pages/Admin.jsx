@@ -9,6 +9,7 @@ import AdminUsers from '../components/admin/AdminUsers';
 import AdminAccounts from '../components/admin/AdminAccounts';
 import AdminPayments from '../components/admin/AdminPayments';
 import AdminFamilies from '../components/admin/AdminFamilies';
+import WhatsAppConfig from '../components/admin/WhatsAppConfig';
 import { toast } from 'sonner';
 
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'accounts', label: '📈 Contas & Engajamento' },
   { id: 'families', label: '🏠 Famílias Cadastradas' },
   { id: 'plans', label: '💰 Planos & Preços' },
+  { id: 'whatsapp', label: '💬 WhatsApp & IA' },
   { id: 'cms', label: '🎨 Landing Page (CMS)' },
 ];
 
@@ -466,6 +468,7 @@ export default function Admin() {
           {tab === 'accounts' && <AdminAccounts />}
           {tab === 'families' && <AdminFamilies />}
           {tab === 'plans' && <PlansEditor />}
+          {tab === 'whatsapp' && <WhatsAppConfig />}
           {tab === 'cms' && <CMSEditor />}
         </main>
       </div>

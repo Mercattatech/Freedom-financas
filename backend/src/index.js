@@ -9,6 +9,11 @@ const port = process.env.PORT || 3000;
 
 // ⚠️ WEBHOOK DEVE VIR ANTES DO express.json() (precisa de raw body)
 app.use('/api/stripe/webhooks', express.raw({ type: 'application/json' }));
+app.use('/api/webhooks/whatsapp', express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // Middleware
 app.use(cors());
@@ -34,6 +39,7 @@ app.use('/api/functions', require('./routes/functions'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/webhooks/whatsapp', require('./routes/whatsapp'));
 
 // Catch-all generic routes for other entities (FinancialMonths, Incomes, etc)
 const genericRouter = require('./routes/generic');
