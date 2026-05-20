@@ -46,9 +46,15 @@ export default function WhatsAppConfig() {
   const { data: configs = [], isLoading } = useQuery({
     queryKey: ['system-config'],
     queryFn: async () => {
-      // Usando a rota de admin que criamos
-      const res = await apiClient.entities.SystemConfig.list();
-      return res;
+      const token = localStorage.getItem('freedom_access_token');
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const base = isLocal ? `http://${window.location.hostname}:3000/api` : '/api';
+      const res = await fetch(`${base}/admin/config`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Erro ao carregar configurações');
+      const data = await res.json();
+      return data.data || [];
     }
   });
 
@@ -62,10 +68,10 @@ export default function WhatsAppConfig() {
 
   const saveMutation = useMutation({
     mutationFn: async ({ key, value }) => {
-      // Usando o endpoint de upsert no backend admin
       const token = localStorage.getItem('freedom_access_token');
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-      
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const baseUrl = isLocal ? `http://${window.location.hostname}:3000/api` : '/api';
+
       const response = await fetch(`${baseUrl}/admin/config`, {
         method: 'POST',
         headers: {

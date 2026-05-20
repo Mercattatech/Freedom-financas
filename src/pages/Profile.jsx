@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { MessageCircle, Phone, User, CheckCircle2, Loader2, Info, Mic, Type } from 'lucide-react';
 
 export default function Profile() {
-  const { user, setUser } = useAuth();
+  const { user, checkAppState } = useAuth();
   const [whatsappPhone, setWhatsappPhone] = useState('');
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -24,8 +24,8 @@ export default function Profile() {
     e.preventDefault();
     setSaving(true);
     try {
-      const { user: updated } = await apiClient.auth.updateProfile({ full_name: fullName, whatsapp_phone: whatsappPhone });
-      if (setUser) setUser(prev => ({ ...prev, ...updated }));
+      await apiClient.auth.updateProfile({ full_name: fullName, whatsapp_phone: whatsappPhone });
+      await checkAppState();
       toast.success('Perfil atualizado com sucesso!');
     } catch (err) {
       toast.error(err.message || 'Erro ao salvar perfil.');
