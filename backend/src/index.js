@@ -24,6 +24,17 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Freedom API is running' });
 });
 
+// Diagnóstico temporário — remover após validação
+app.get('/api/debug-webhook', (req, res) => {
+  const token = process.env.WHATSAPP_VERIFY_TOKEN;
+  res.json({
+    token_set: !!token,
+    token_length: token?.length,
+    token_preview: token ? token.slice(0, 8) + '...' : null,
+    query: req.query
+  });
+});
+
 const path = require('path');
 
 // Make the uploads folder publicly accessible
