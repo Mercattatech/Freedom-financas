@@ -5,6 +5,9 @@ const prisma = new PrismaClient();
 const whatsappService = require('../services/whatsappService');
 const aiInterpreter = require('../services/aiInterpreterService');
 const { triggerRecalculo } = require('../services/creditCardBill');
+const axios = require('axios');
+const { OpenAI } = require('openai');
+const configService = require('../services/configService');
 
 // GET /api/webhooks/whatsapp - Verificação do Webhook
 router.get('/', (req, res) => {
@@ -32,12 +35,25 @@ router.post('/', async (req, res) => {
   const contact = body.entry[0].changes[0].value.contacts?.[0];
   const phone = message.from;
   const messageId = message.id;
-  const messageText = message.text?.body;
 
-  // 1. Ignorar se não for texto (por enquanto)
-  if (message.type !== 'text') {
+  // 1. Aceita texto e áudio; ignora outros tipos
+  if (!['text', 'audio'].includes(message.type)) {
     return res.sendStatus(200);
   }
+
+  let messageText = message.text?.body || null;
+
+  if (message.type === 'audio') {
+    try {
+      messageText = await transcribeAudio(message.audio.id);
+    } catch (err) {
+      console.error('Whisper transcription error:', err.message);
+      await whatsappService.sendTextMessage(phone, '🎙️ Não consegui entender o áudio. Pode tentar enviar uma mensagem de texto?');
+      return res.sendStatus(200);
+    }
+  }
+
+  if (!messageText) return res.sendStatus(200);
 
   try {
     // 2. Proteção contra duplicidade
@@ -139,6 +155,38 @@ router.post('/', async (req, res) => {
     return res.sendStatus(200);
   }
 });
+
+async function transcribeAudio(mediaId) {
+  const accessToken = await configService.get('WHATSAPP_ACCESS_TOKEN');
+  const apiVersion = await configService.get('WHATSAPP_API_VERSION', 'v21.0');
+
+  // 1. Obtém a URL de download do arquivo
+  const mediaRes = await axios.get(
+    `https://graph.facebook.com/${apiVersion}/${mediaId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const mediaUrl = mediaRes.data.url;
+
+  // 2. Baixa o arquivo de áudio como buffer
+  const audioRes = await axios.get(mediaUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    responseType: 'arraybuffer'
+  });
+
+  // 3. Transcreve com OpenAI Whisper
+  const openaiKey = await configService.get('OPENAI_API_KEY');
+  const openai = new OpenAI({ apiKey: openaiKey });
+  const buffer = Buffer.from(audioRes.data);
+  const file = new File([buffer], 'audio.ogg', { type: 'audio/ogg' });
+
+  const transcription = await openai.audio.transcriptions.create({
+    file,
+    model: 'whisper-1',
+    language: 'pt'
+  });
+
+  return transcription.text;
+}
 
 async function handleIntent(aiResult, user, phone, session, family) {
   const { intent, data, missing_fields, needs_confirmation, user_question, summary_for_confirmation } = aiResult;
