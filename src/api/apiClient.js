@@ -100,6 +100,15 @@ export const apiClient = {
         body: JSON.stringify({ newPassword })
       });
     },
+    async updateProfile(data) {
+      return await apiFetch('/auth/update-profile', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+    },
+    async getSystemWhatsapp() {
+      return await apiFetch('/auth/whatsapp-number');
+    },
     async me() {
       try {
         return await apiFetch('/auth/me');

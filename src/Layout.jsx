@@ -223,15 +223,15 @@ export default function Layout({ children, currentPageName }) {
               </Link>
 
               {user && (
-                <div className="hidden sm:flex items-center gap-3">
+                <Link to={createPageUrl('Profile')} className="hidden sm:flex items-center gap-3 hover:opacity-80 transition-opacity" title="Meu Perfil">
                   <div className="text-right">
-                    <p className="text-sm font-medium text-slate-800">{user.name || user.email?.split('@')[0]}</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-white">{user.name || user.email?.split('@')[0]}</p>
                     <p className="text-xs text-slate-400">{user.email}</p>
                   </div>
                   <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
                     {(user.name || user.email)?.[0]?.toUpperCase()}
                   </div>
-                </div>
+                </Link>
               )}
               {user?.role === 'admin' && (
                 <Link

@@ -366,4 +366,14 @@ router.post('/update-profile', authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/auth/whatsapp-number — público, retorna o número de exibição do WhatsApp do sistema
+router.get('/whatsapp-number', async (req, res) => {
+  try {
+    const config = await prisma.systemConfig.findUnique({ where: { key: 'WHATSAPP_DISPLAY_NUMBER' } });
+    res.json({ number: config?.value || null });
+  } catch {
+    res.json({ number: null });
+  }
+});
+
 module.exports = router;

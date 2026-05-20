@@ -23,6 +23,7 @@ import Evolution from './pages/Evolution';
 import Goals from './pages/Goals';
 import HelpCenter from './pages/HelpCenter';
 import CreditCards from './pages/CreditCards';
+import Profile from './pages/Profile';
 import __Layout from './Layout.jsx';
 
 
@@ -49,6 +50,7 @@ export const PAGES = {
     "Goals": Goals,
     "HelpCenter": HelpCenter,
     "CreditCards": CreditCards,
+    "Profile": Profile,
 }
 
 // Pages that don't require authentication
