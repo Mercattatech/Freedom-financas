@@ -36,7 +36,8 @@ model User {
   blocked_by             String?   // email do admin
 
   // ── WhatsApp ──
-  whatsapp_phone         String?   @unique
+  whatsapp_phone              String?   @unique
+  whatsapp_default_family_id  String?   // Família padrão para lançamentos via WhatsApp
 
   // Relations
   families     Family[] @relation("FamilyCreator")
@@ -482,4 +483,15 @@ model SystemConfig {
   value       String
   description String?
   updated_at  DateTime @updatedAt
+}
+
+model AITrainingExample {
+  id              String   @id @default(uuid())
+  input_message   String   // Mensagem exatamente como o usuário enviaria
+  expected_intent String   // create_expense | create_income | create_credit_card_expense | etc
+  expected_data   Json     // { amount: 100, payment_method: "PIX", description: "Mercado" }
+  notes           String?  // Observações do admin
+  ativo           Boolean  @default(true)
+  created_date    DateTime @default(now())
+  updated_date    DateTime @updatedAt
 }

@@ -1,5 +1,7 @@
 const { OpenAI } = require('openai');
 const configService = require('./configService');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 class AIInterpreterService {
   async interpretMessage(text, context) {
@@ -8,6 +10,27 @@ class AIInterpreterService {
     if (!apiKey) {
       console.error('OpenAI API Key not found in config or env');
       return { intent: 'unknown', user_question: 'Configuração de IA ausente.' };
+    }
+
+    // Carregar exemplos de treinamento personalizados do banco
+    let trainingSection = '';
+    try {
+      const trainingExamples = await prisma.aITrainingExample.findMany({
+        where: { ativo: true },
+        orderBy: { created_date: 'asc' }
+      });
+      if (trainingExamples.length > 0) {
+        const lines = trainingExamples.map(ex => {
+          const dataStr = Object.entries(ex.expected_data || {})
+            .filter(([, v]) => v !== null && v !== undefined)
+            .map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(', ');
+          const note = ex.notes ? ` // ${ex.notes}` : '';
+          return `"${ex.input_message}" → ${ex.expected_intent}${dataStr ? ', ' + dataStr : ''}${note}`;
+        }).join('\n');
+        trainingSection = `\n==== EXEMPLOS DE TREINAMENTO PERSONALIZADOS (prioridade alta) ====\n${lines}`;
+      }
+    } catch (e) {
+      console.warn('Não foi possível carregar exemplos de treinamento:', e.message);
     }
 
     const openai = new OpenAI({ apiKey });
@@ -81,13 +104,14 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
   "summary_for_confirmation": "✅ Confirmar lançamento?\\n📝 Mercado\\n💰 R$ 100,00\\n📅 ${currentDate}\\n💳 PIX"
 }
 
-==== EXEMPLOS ====
+==== EXEMPLOS BASE ====
 "gastei 50 no mercado no pix" → create_expense, amount=50, description="Mercado", payment_method="PIX", date=${currentDate}
 "paguei 200 no nubank" → create_credit_card_expense, amount=200, credit_card="Nubank"
 "recebi 3000 de salário" → create_income, amount=3000, description="Salário"
 "gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito ou dinheiro?"
 "sim" → confirm_action
 "não cancela" → reject_action
+${trainingSection}
 `;
 
     try {
@@ -101,7 +125,6 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
       });
 
       const result = JSON.parse(response.choices[0].message.content);
-      // Garantir que needs_confirmation existe
       if (result.needs_confirmation === undefined) result.needs_confirmation = true;
       return result;
     } catch (error) {

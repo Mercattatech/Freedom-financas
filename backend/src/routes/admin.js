@@ -402,4 +402,83 @@ router.post('/config', authenticateToken, onlyAdmin, async (req, res) => {
   }
 });
 
+
+// ────────────────────────────────────────────
+// AI TRAINING EXAMPLES
+// ────────────────────────────────────────────
+
+// GET /api/admin/ai-training — lista todos os exemplos
+router.get('/ai-training', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const examples = await prisma.aITrainingExample.findMany({
+      orderBy: { created_date: 'desc' }
+    });
+    res.json({ data: examples });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /api/admin/ai-training — cria novo exemplo
+router.post('/ai-training', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const { input_message, expected_intent, expected_data, notes } = req.body;
+    if (!input_message || !expected_intent) {
+      return res.status(400).json({ message: 'input_message e expected_intent são obrigatórios.' });
+    }
+    const example = await prisma.aITrainingExample.create({
+      data: { input_message, expected_intent, expected_data: expected_data || {}, notes }
+    });
+    res.status(201).json({ data: example });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// PUT /api/admin/ai-training/:id — edita exemplo
+router.put('/ai-training/:id', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { input_message, expected_intent, expected_data, notes, ativo } = req.body;
+    const example = await prisma.aITrainingExample.update({
+      where: { id },
+      data: { input_message, expected_intent, expected_data, notes, ativo }
+    });
+    res.json({ data: example });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE /api/admin/ai-training/:id — desativa (soft delete)
+router.delete('/ai-training/:id', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.aITrainingExample.update({ where: { id }, data: { ativo: false } });
+    res.json({ message: 'Exemplo desativado com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /api/admin/ai-training/test — testa uma mensagem na IA e retorna o resultado
+router.post('/ai-training/test', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ message: 'message é obrigatório.' });
+
+    const aiInterpreter = require('../services/aiInterpreterService');
+    const result = await aiInterpreter.interpretMessage(message, {
+      currentDate: new Date().toISOString().split('T')[0],
+      userTimezone: 'America/Sao_Paulo',
+      categories: [],
+      creditCards: [],
+      lastSession: null
+    });
+    res.json({ data: result });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 module.exports = router;

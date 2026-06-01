@@ -107,21 +107,109 @@ router.post('/', async (req, res) => {
       orderBy: { created_at: 'desc' }
     });
 
-    // 5. Buscar a família mais ativa do usuário (com mais categorias = mais configurada)
+    // 5. Verificar se quer mudar de família
+    const wantsFamilyChange = /mudar fam[ií]lia|trocar fam[ií]lia|change family/i.test(messageText);
+    if (wantsFamilyChange && user.whatsapp_default_family_id) {
+      await prisma.user.update({ where: { id: user.id }, data: { whatsapp_default_family_id: null } });
+      // Invalidar sessão atual
+      if (session) await prisma.whatsappSession.update({ where: { id: session.id }, data: { state: 'cancelled', updated_at: new Date() } });
+      session = null;
+    }
+
+    // 6. Buscar famílias do usuário
     const userFamilies = await prisma.family.findMany({
       where: { created_by: user.email },
       include: { _count: { select: { categories: true } } },
       orderBy: { created_date: 'asc' }
     });
 
-    // Escolhe a família com mais categorias (heurística de "família principal")
-    const family = userFamilies.sort((a, b) => (b._count.categories - a._count.categories))[0];
-
-    if (!family) {
+    if (userFamilies.length === 0) {
       await whatsappService.sendTextMessage(phone, "Você ainda não possui uma Família cadastrada no sistema. Crie uma família primeiro.");
       return res.sendStatus(200);
     }
 
+    // 7. Processar seleção de família se estiver em estado pendente
+    if (session?.state === 'awaiting_family_selection') {
+      const text = messageText.trim();
+      const storedFamilies = session.extracted_data?.families || [];
+      let selectedFamily = null;
+
+      // Tenta por número ("1", "2", ...)
+      const num = parseInt(text);
+      if (!isNaN(num) && num >= 1 && num <= storedFamilies.length) {
+        selectedFamily = storedFamilies[num - 1];
+      } else {
+        // Tenta por nome (parcial)
+        selectedFamily = storedFamilies.find(f =>
+          f.nome_familia.toLowerCase().includes(text.toLowerCase())
+        );
+      }
+
+      if (!selectedFamily) {
+        const opts = storedFamilies.map((f, i) => `${i + 1}⃣ ${f.nome_familia}`).join('\n');
+        await whatsappService.sendTextMessage(phone, `Não entendi. Responda com o número ou nome da família:\n${opts}`);
+        return res.sendStatus(200);
+      }
+
+      // Salvar como padrão permanente
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { whatsapp_default_family_id: selectedFamily.id }
+      });
+
+      // Atualizar sessão com família escolhida e continuar fluxo normal
+      const pendingMessage = session.extracted_data?.pending_message;
+      await prisma.whatsappSession.update({
+        where: { id: session.id },
+        data: { state: 'new', extracted_data: { family_id: selectedFamily.id }, updated_at: new Date() }
+      });
+      session = await prisma.whatsappSession.findUnique({ where: { id: session.id } });
+
+      const confirmMsg = `✅ Família *${selectedFamily.nome_familia}* selecionada! Vou lembrar para as próximas vezes.`;
+      if (!pendingMessage) {
+        await whatsappService.sendTextMessage(phone, confirmMsg + '\n\nAgora pode enviar seu lançamento!');
+        return res.sendStatus(200);
+      }
+      // Se tinha mensagem pendente, envia confirmação e reprocessa
+      await whatsappService.sendTextMessage(phone, confirmMsg);
+    }
+
+    // 8. Resolver qual família usar
+    let family;
+    // Recarregar user para pegar default atualizado
+    const freshUser = await prisma.user.findUnique({ where: { id: user.id } });
+    
+    if (freshUser.whatsapp_default_family_id) {
+      family = userFamilies.find(f => f.id === freshUser.whatsapp_default_family_id);
+    }
+
+    if (!family && userFamilies.length === 1) {
+      family = userFamilies[0];
+    }
+
+    if (!family) {
+      // Múltiplas famílias, nenhuma padrão → perguntar
+      const opts = userFamilies.map((f, i) => `${i + 1}⃣ ${f.nome_familia}`).join('\n');
+      const msg = `Olá! Você tem ${userFamilies.length} famílias cadastradas. Para qual delas é esse lançamento?\n\n${opts}\n\n_Essa escolha será salva para as próximas mensagens. Digite \'mudar família\' para trocar._`;
+      
+      const sessionData = {
+        user_id: user.id,
+        phone: phone,
+        state: 'awaiting_family_selection',
+        intent: null,
+        extracted_data: { families: userFamilies.map(f => ({ id: f.id, nome_familia: f.nome_familia })), pending_message: messageText },
+        expires_at: new Date(Date.now() + 30 * 60000)
+      };
+      if (session) {
+        await prisma.whatsappSession.update({ where: { id: session.id }, data: { ...sessionData, updated_at: new Date() } });
+      } else {
+        await prisma.whatsappSession.create({ data: sessionData });
+      }
+      await whatsappService.sendTextMessage(phone, msg);
+      return res.sendStatus(200);
+    }
+
+    // 9. Preparar contexto e chamar IA
     const [categories, creditCards] = await Promise.all([
       prisma.category.findMany({ where: { family_id: family.id, ativo: true } }),
       prisma.creditCard.findMany({ where: { family_id: family.id, ativo: true } })
@@ -140,10 +228,10 @@ router.post('/', async (req, res) => {
       } : null
     };
 
-    // 6. Chamar IA
+    // 10. Chamar IA
     const aiResult = await aiInterpreter.interpretMessage(messageText, interpretationContext);
 
-    // 7. Processar Intent
+    // 11. Processar Intent
     await handleIntent(aiResult, user, phone, session, family);
 
     return res.sendStatus(200);
