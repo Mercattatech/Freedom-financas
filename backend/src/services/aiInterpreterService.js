@@ -4,114 +4,105 @@ const configService = require('./configService');
 class AIInterpreterService {
   async interpretMessage(text, context) {
     const apiKey = await configService.get('OPENAI_API_KEY');
-    
+
     if (!apiKey) {
       console.error('OpenAI API Key not found in config or env');
-      return { intent: 'unknown', user_question: "Configuração de IA ausente." };
+      return { intent: 'unknown', user_question: 'Configuração de IA ausente.' };
     }
 
     const openai = new OpenAI({ apiKey });
-    const { 
-      currentDate, 
-      userTimezone, 
-      accounts = [], 
-      creditCards = [], 
+    const {
+      currentDate,
+      userTimezone,
+      creditCards = [],
       categories = [],
       lastSession = null
     } = context;
 
+    const creditCardList = creditCards.map(cc => cc.nome).join(', ') || 'nenhum';
+    const categoryList = categories.map(c => c.nome).join(', ') || 'nenhuma';
+    const singleCard = creditCards.length === 1 ? creditCards[0].nome : null;
+
     const systemPrompt = `
-Você é um interpretador financeiro. Sua função é transformar mensagens informais de WhatsApp em JSON estruturado para um sistema financeiro.
+Você é o assistente financeiro do app Freedom. Interprete mensagens de WhatsApp e retorne APENAS JSON válido.
 
-Você não deve conversar livremente com o usuário.
-Você deve apenas retornar JSON válido.
-Não invente dados.
-Não crie valores ausentes.
-Não escolha conta ou cartão se houver ambiguidade.
-Use as listas fornecidas de contas, cartões e categorias para normalizar os dados.
-Quando uma informação obrigatória estiver ausente, adicione o campo em missing_fields e gere uma pergunta objetiva em user_question.
-Quando a mensagem indicar confirmação de uma ação pendente, retorne intent confirm_action.
-Quando a mensagem indicar cancelamento ou rejeição, retorne intent reject_action.
-Nunca autorize lançamento sem confirmação explícita do usuário.
+==== REGRAS PRINCIPAIS ====
+1. Retorne apenas JSON. Nunca texto livre.
+2. Não invente dados. Se faltar informação obrigatória, coloque em missing_fields e gere user_question.
+3. "sim", "ok", "pode", "confirma", "isso", "exato" → intent: "confirm_action"
+4. "não", "cancela", "errado", "para" → intent: "reject_action"
+5. Sempre inclua needs_confirmation: true antes de executar.
+6. Seja conciso nas perguntas (máximo 1 pergunta por vez).
 
-Campos obrigatórios para despesa:
-- amount
-- date
-- description
-- payment_method
-- account ou credit_card
+==== INTENTS E CAMPOS OBRIGATÓRIOS ====
 
-Campos obrigatórios para receita:
-- amount
-- date
-- description
-- account
+create_expense (débito, PIX, dinheiro):
+  OBRIGATÓRIO: amount, description, payment_method
+  OPCIONAL: date (padrão: ${currentDate}), category
+  ⚠️ NÃO EXISTE "conta bancária" neste sistema. Não pergunte sobre conta.
+  Valores válidos para payment_method: PIX | DINHEIRO | DEBITO
+  Infira automaticamente:
+    "pix", "transferência" → PIX
+    "dinheiro", "espécie" → DINHEIRO
+    "débito", "debito" → DEBITO
+  Se não informado: pergunte "Foi no PIX, débito ou dinheiro?"
 
-Campos obrigatórios para conta a pagar:
-- amount
-- description
-- due_date
+create_credit_card_expense (cartão de crédito):
+  OBRIGATÓRIO: amount, description, credit_card
+  OPCIONAL: date (padrão: ${currentDate}), installments, category
+  Cartões disponíveis: ${creditCardList}
+  ${singleCard ? `Há apenas 1 cartão (${singleCard}) — use-o automaticamente sem perguntar.` : 'Se não informar o cartão, pergunte qual.'}
 
-Campos obrigatórios para despesa de cartão:
-- amount
-- date
-- description
-- credit_card
+create_income (receita, salário, entrada):
+  OBRIGATÓRIO: amount, description
+  OPCIONAL: date (padrão: ${currentDate}), category
 
-Campos obrigatórios para investimento:
-- investment_operation
-- investment_asset
-- date
-- amount ou quantity/unit_price
+==== CONTEXTO ====
+Categorias: ${categoryList}
+Data atual: ${currentDate} | Timezone: ${userTimezone}
+Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 
-Categorias disponíveis: ${categories.map(c => c.nome).join(', ')}
-Contas/Bancos disponíveis: ${accounts.map(a => a.nome).join(', ')}
-Cartões disponíveis: ${creditCards.map(cc => cc.nome).join(', ')}
-
-Data atual: ${currentDate}
-Timezone: ${userTimezone}
-
-Contexto da Sessão Anterior:
-${lastSession ? JSON.stringify(lastSession) : 'Nenhuma sessão ativa.'}
-
-Formato de saída obrigatório:
+==== FORMATO DE SAÍDA ====
 {
-  "intent": "create_expense | create_income | create_payable | create_credit_card_expense | create_investment_transaction | query_summary | confirm_action | reject_action | unknown",
-  "confidence": 0.0,
+  "intent": "create_expense | create_income | create_credit_card_expense | confirm_action | reject_action | unknown",
+  "confidence": 0.95,
   "data": {
-    "amount": null,
-    "date": null,
-    "description": null,
+    "amount": 100,
+    "date": "${currentDate}",
+    "description": "Mercado",
     "category": null,
-    "payment_method": null,
-    "account": null,
+    "payment_method": "PIX",
     "credit_card": null,
-    "installments": null,
-    "due_date": null,
-    "status": null,
-    "investment_asset": null,
-    "investment_operation": null,
-    "quantity": null,
-    "unit_price": null
+    "installments": null
   },
   "missing_fields": [],
   "needs_confirmation": true,
   "user_question": null,
-  "summary_for_confirmation": null
+  "summary_for_confirmation": "✅ Confirmar lançamento?\\n📝 Mercado\\n💰 R$ 100,00\\n📅 ${currentDate}\\n💳 PIX"
 }
+
+==== EXEMPLOS ====
+"gastei 50 no mercado no pix" → create_expense, amount=50, description="Mercado", payment_method="PIX", date=${currentDate}
+"paguei 200 no nubank" → create_credit_card_expense, amount=200, credit_card="Nubank"
+"recebi 3000 de salário" → create_income, amount=3000, description="Salário"
+"gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito ou dinheiro?"
+"sim" → confirm_action
+"não cancela" → reject_action
 `;
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: 'gpt-4o-mini',
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: text }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: text }
         ],
-        response_format: { type: "json_object" }
+        response_format: { type: 'json_object' }
       });
 
       const result = JSON.parse(response.choices[0].message.content);
+      // Garantir que needs_confirmation existe
+      if (result.needs_confirmation === undefined) result.needs_confirmation = true;
       return result;
     } catch (error) {
       console.error('Error in AI interpretation:', error);
@@ -121,7 +112,7 @@ Formato de saída obrigatório:
         data: {},
         missing_fields: [],
         needs_confirmation: false,
-        user_question: "Desculpe, tive um problema técnico ao processar sua mensagem. Pode tentar novamente em alguns instantes?"
+        user_question: 'Desculpe, tive um problema técnico. Pode tentar novamente?'
       };
     }
   }
