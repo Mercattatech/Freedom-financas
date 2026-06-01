@@ -90,6 +90,16 @@ generate_report (relatório, resumo, fechamento do mês, extrato):
   Se disser algo sem data clara, assuma "${currentDate.substring(0, 7)}".
   needs_confirmation deve ser FALSE para relatórios.
 
+list_expenses (listar lançamentos, listar gastos):
+  OBRIGATÓRIO: date (data para listar, ex: "hoje", "ontem", "do dia 15")
+  Formato de date: "YYYY-MM-DD". Se não especificar, use "${currentDate}".
+  needs_confirmation deve ser FALSE para listagens.
+
+update_expense (alterar lançamento, trocar valor, mudar para pix):
+  OBRIGATÓRIO: item_index (o número/ID do item na lista que o usuário quer alterar)
+  OPCIONAL: amount (novo valor), payment_method (nova forma), credit_card (novo cartão), category (nova categoria)
+  needs_confirmation deve ser TRUE.
+
 ==== CONTEXTO ====
 Categorias: ${categoryList}
 Data atual: ${currentDate} | Timezone: ${userTimezone}
@@ -97,7 +107,7 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 
 ==== FORMATO DE SAÍDA ====
 {
-  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | confirm_action | reject_action | unknown",
+  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | confirm_action | reject_action | unknown",
   "confidence": 0.95,
   "data": {
     "amount": 100,
@@ -107,7 +117,8 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
     "payment_method": "PIX",
     "credit_card": null,
     "installments": null,
-    "period": null
+    "period": null,
+    "item_index": null
   },
   "missing_fields": [],
   "needs_confirmation": true,
@@ -124,6 +135,9 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 "pix", "débito" ou "dinheiro" (quando sessão anterior pede forma de pagamento) → intent original da sessão (ex: create_expense), juntar com dados originais (amount, description, etc) e setar payment_method
 "mande o relatorio desse mes" → generate_report, period="${currentDate.substring(0, 7)}"
 "como foi meu mes passado?" → generate_report, period="[ano-mes_passado]"
+"liste os lancamentos de hoje" → list_expenses, date="${currentDate}"
+"altere o lancamento 1 para boleto" → update_expense, item_index=1, payment_method="BOLETO"
+"altere o 2 para 150 no pix" → update_expense, item_index=2, amount=150, payment_method="PIX"
 "sim" → confirm_action
 "não cancela" → reject_action
 ${trainingSection}

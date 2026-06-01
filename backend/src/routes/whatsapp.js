@@ -282,6 +282,16 @@ async function handleIntent(aiResult, user, phone, session, family) {
     return await handleReportRequest(user, family, data.period, phone);
   }
 
+  // Se for listagem de gastos
+  if (intent === 'list_expenses') {
+    return await handleListExpensesRequest(user, family, data.date, phone, session);
+  }
+
+  // Se for edição e estiver faltando o índice
+  if (intent === 'update_expense' && (!data.item_index || !session?.extracted_data?.listed_items)) {
+    return await whatsappService.sendTextMessage(phone, "Por favor, liste os lançamentos primeiro (ex: 'liste os de hoje') e depois diga qual número quer alterar.");
+  }
+
   // Se a intenção for confirm_action ou reject_action, precisamos de uma sessão ativa com ação pendente
   if ((intent === 'confirm_action' || intent === 'reject_action') && session?.pending_action) {
     if (intent === 'confirm_action') {
@@ -476,6 +486,50 @@ async function executePendingAction(session, user, phone, family) {
         }
       });
       recordsCreated.push(record);
+    } else if (intent === 'update_expense') {
+      const listedItems = session.extracted_data.listed_items;
+      const index = parseInt(data.item_index) - 1;
+      
+      if (index < 0 || index >= listedItems.length) {
+        throw new Error("Índice de lançamento inválido");
+      }
+      
+      const targetExpenseId = listedItems[index].id;
+      const oldExpense = await prisma.expense.findUnique({ where: { id: targetExpenseId } });
+      
+      if (!oldExpense) throw new Error("Lançamento não encontrado");
+
+      let updateData = {};
+      if (data.amount) updateData.valor = parseFloat(data.amount);
+      
+      if (data.payment_method) {
+        updateData.forma_pagamento = data.payment_method;
+        if (data.payment_method !== 'CARTAO_CREDITO') {
+          updateData.credit_card_id = null; // Remove do cartão
+        }
+      }
+      
+      if (data.credit_card) {
+        const cc = await prisma.creditCard.findFirst({
+          where: { family_id: family.id, nome: { contains: data.credit_card, mode: 'insensitive' } }
+        });
+        if (cc) {
+          updateData.credit_card_id = cc.id;
+          updateData.forma_pagamento = 'CARTAO_CREDITO';
+        }
+      }
+
+      const updatedRecord = await prisma.expense.update({
+        where: { id: targetExpenseId },
+        data: updateData
+      });
+      
+      recordsCreated.push(updatedRecord);
+
+      // Recalcula fatura se envolveu cartão (antes ou depois)
+      if (oldExpense.credit_card_id || updatedRecord.credit_card_id) {
+        triggerRecalculo(updatedRecord, family.id).catch(console.error);
+      }
     }
     // TODO: Implementar outros intents (payable, investment)
 
@@ -489,7 +543,7 @@ async function executePendingAction(session, user, phone, family) {
         extracted_data: data,
         confirmation_status: 'confirmed',
         related_record_type: intent.includes('expense') ? 'Expense' : 'Income',
-        related_record_id: record.id,
+        related_record_id: recordsCreated[0]?.id || 'unknown',
         confirmed_at: new Date()
       }
     });
@@ -555,6 +609,58 @@ async function handleReportRequest(user, family, period, phone) {
   } catch (err) {
     console.error('Error generating report:', err);
     await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao gerar seu relatório. Tente novamente mais tarde.");
+  }
+}
+
+async function handleListExpensesRequest(user, family, dateParam, phone, session) {
+  try {
+    const searchDate = dateParam || new Date().toISOString().split('T')[0];
+    
+    const expenses = await prisma.expense.findMany({
+      where: { family_id: family.id, data: searchDate },
+      include: { category: true, creditCard: true },
+      orderBy: { created_date: 'asc' }
+    });
+
+    if (expenses.length === 0) {
+      return await whatsappService.sendTextMessage(phone, `Não encontrei nenhum lançamento para o dia ${searchDate}.`);
+    }
+
+    const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+    
+    let msg = `📋 *Lançamentos do dia ${searchDate}*\n\n`;
+    
+    const listedItems = expenses.map((exp, idx) => {
+      let forma = exp.forma_pagamento || '';
+      if (exp.credit_card_id && exp.creditCard) forma = `Cartão ${exp.creditCard.nome}`;
+      const cat = exp.category ? `[${exp.category.nome}]` : '';
+      
+      msg += `${idx + 1}. ${exp.descricao} - ${formatter.format(exp.valor)} (${forma}) ${cat}\n`;
+      return { id: exp.id, descricao: exp.descricao };
+    });
+    
+    msg += `\n💡 *Dica:* Para alterar algo, responda "Altere o lançamento X para..."`;
+
+    // Save the list to session so we can update by index later
+    const sessionData = {
+      user_id: user.id,
+      phone: phone,
+      state: 'awaiting_command', // Generic state
+      intent: 'list_expenses',
+      extracted_data: { listed_items: listedItems },
+      expires_at: new Date(Date.now() + 30 * 60000)
+    };
+
+    if (session) {
+      await prisma.whatsappSession.update({ where: { id: session.id }, data: sessionData });
+    } else {
+      await prisma.whatsappSession.create({ data: sessionData });
+    }
+
+    await whatsappService.sendTextMessage(phone, msg);
+  } catch (err) {
+    console.error('Error listing expenses:', err);
+    await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao listar os lançamentos.");
   }
 }
 
