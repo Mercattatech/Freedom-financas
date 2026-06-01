@@ -378,15 +378,23 @@ async function executePendingAction(session, user, phone, family) {
     }
 
     // 2. Criar registro no banco conforme intent
-    let record;
+    let recordsCreated = [];
     if (intent === 'create_expense' || intent === 'create_credit_card_expense') {
-      // Tenta encontrar a categoria pelo nome
+      // Encontrar a categoria pelo nome (busca insensitive exata ou parcial)
       let categoryId = null;
       if (data.category) {
         const cat = await prisma.category.findFirst({
-          where: { family_id: family.id, nome: { contains: data.category, mode: 'insensitive' } }
+          where: { family_id: family.id, nome: { equals: data.category, mode: 'insensitive' } }
         });
         categoryId = cat?.id;
+        
+        // Fallback para 'contains' se a exata não bater
+        if (!categoryId) {
+          const catFallback = await prisma.category.findFirst({
+            where: { family_id: family.id, nome: { contains: data.category, mode: 'insensitive' } }
+          });
+          categoryId = catFallback?.id;
+        }
       }
 
       // Tenta encontrar o cartão pelo nome
@@ -398,34 +406,66 @@ async function executePendingAction(session, user, phone, family) {
         creditCardId = cc?.id;
       }
 
-      record = await prisma.expense.create({
-        data: {
-          descricao: data.description || 'Lançamento WhatsApp',
-          valor: parseFloat(data.amount),
-          data: data.date || new Date().toISOString().split('T')[0],
-          forma_pagamento: data.payment_method || (creditCardId ? 'CARTAO_CREDITO' : 'PIX'),
-          month_id: financialMonth.id,
-          family_id: family.id,
-          category_id: categoryId,
-          credit_card_id: creditCardId
-        }
-      });
+      const totalAmount = parseFloat(data.amount);
+      const installments = parseInt(data.installments) || 1;
+      const installmentValue = installments > 1 ? (totalAmount / installments) : totalAmount;
+      const baseDate = new Date(data.date || new Date().toISOString().split('T')[0]);
 
-      // Se for cartão, recalcula fatura
+      for (let i = 0; i < installments; i++) {
+        // Calcular data da parcela (adiciona meses)
+        const currentInstallmentDate = new Date(baseDate);
+        currentInstallmentDate.setMonth(currentInstallmentDate.getMonth() + i);
+        const installmentDateStr = currentInstallmentDate.toISOString().split('T')[0];
+        const installmentCompetencia = installmentDateStr.substring(0, 7); // YYYY-MM
+
+        // Garantir que o mês financeiro exista
+        let instFinancialMonth = await prisma.financialMonth.findUnique({
+          where: { family_id_competencia: { family_id: family.id, competencia: installmentCompetencia } }
+        });
+
+        if (!instFinancialMonth) {
+          instFinancialMonth = await prisma.financialMonth.create({
+            data: { family_id: family.id, competencia: installmentCompetencia, status: 'ABERTO' }
+          });
+        }
+
+        const description = installments > 1 
+          ? `${data.description || 'Lançamento WhatsApp'} (${i + 1}/${installments})`
+          : (data.description || 'Lançamento WhatsApp');
+
+        const record = await prisma.expense.create({
+          data: {
+            descricao: description,
+            valor: installmentValue,
+            data: installmentDateStr,
+            forma_pagamento: data.payment_method || (creditCardId ? 'CARTAO_CREDITO' : 'PIX'),
+            month_id: instFinancialMonth.id,
+            family_id: family.id,
+            category_id: categoryId,
+            credit_card_id: creditCardId
+          }
+        });
+        
+        recordsCreated.push(record);
+      }
+
+      // Se for cartão, recalcula a fatura do cartão
       if (creditCardId) {
-        triggerRecalculo(record, family.id).catch(console.error);
+        // Precisamos recalcular todas as despesas recém criadas se afetarem faturas futuras.
+        // O `triggerRecalculo` recalcula faturas pendentes do cartão na família.
+        triggerRecalculo(recordsCreated[0], family.id).catch(console.error);
       }
 
     } else if (intent === 'create_income') {
       let categoryId = null;
       if (data.category) {
         const cat = await prisma.category.findFirst({
-          where: { family_id: family.id, nome: { contains: data.category, mode: 'insensitive' } }
+          where: { family_id: family.id, nome: { equals: data.category, mode: 'insensitive' } }
         });
         categoryId = cat?.id;
       }
 
-      record = await prisma.income.create({
+      const record = await prisma.income.create({
         data: {
           descricao: data.description || 'Receita WhatsApp',
           valor: parseFloat(data.amount),
@@ -435,6 +475,7 @@ async function executePendingAction(session, user, phone, family) {
           category_id: categoryId
         }
       });
+      recordsCreated.push(record);
     }
     // TODO: Implementar outros intents (payable, investment)
 
