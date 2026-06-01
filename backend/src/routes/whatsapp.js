@@ -277,6 +277,11 @@ async function transcribeAudio(mediaId) {
 async function handleIntent(aiResult, user, phone, session, family) {
   const { intent, data, missing_fields, needs_confirmation, user_question, summary_for_confirmation } = aiResult;
 
+  // Se for relatório
+  if (intent === 'generate_report') {
+    return await handleReportRequest(user, family, data.period, phone);
+  }
+
   // Se a intenção for confirm_action ou reject_action, precisamos de uma sessão ativa com ação pendente
   if ((intent === 'confirm_action' || intent === 'reject_action') && session?.pending_action) {
     if (intent === 'confirm_action') {
@@ -459,6 +464,56 @@ async function executePendingAction(session, user, phone, family) {
   } catch (error) {
     console.error('Error executing financial action:', error);
     await whatsappService.sendTextMessage(phone, "❌ Erro ao criar o lançamento. Por favor, verifique no sistema.");
+  }
+}
+
+async function handleReportRequest(user, family, period, phone) {
+  try {
+    const p = period || new Date().toISOString().substring(0, 7);
+    
+    const financialMonth = await prisma.financialMonth.findUnique({
+      where: { family_id_competencia: { family_id: family.id, competencia: p } }
+    });
+
+    if (!financialMonth) {
+      return await whatsappService.sendTextMessage(phone, `Não encontrei dados financeiros para o período ${p}.`);
+    }
+
+    const [incomes, expenses, investmentBoxes, stocks] = await Promise.all([
+      prisma.income.findMany({ where: { month_id: financialMonth.id } }),
+      prisma.expense.findMany({ where: { month_id: financialMonth.id } }),
+      prisma.investmentBox.findMany({ where: { family_id: family.id, ativo: true } }),
+      prisma.stockInvestment.findMany({ where: { family_id: family.id, ativo: true } })
+    ]);
+
+    const totalIncome = incomes.reduce((sum, i) => sum + Number(i.valor), 0);
+    const regularExpenses = expenses.filter(e => !e.credit_card_id || e.is_fatura_cartao);
+    const ccExpenses = expenses.filter(e => e.credit_card_id && !e.is_fatura_cartao);
+    
+    const totalRegular = regularExpenses.reduce((sum, e) => sum + Number(e.valor), 0);
+    const totalCC = ccExpenses.reduce((sum, e) => sum + Number(e.valor), 0);
+    
+    const totalInvestments = investmentBoxes.reduce((sum, i) => sum + Number(i.saldo_atual), 0) 
+      + stocks.reduce((sum, s) => sum + Number(s.saldo_atual), 0);
+
+    const balance = totalIncome - totalRegular;
+
+    const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    let msg = `📊 *Resumo Financeiro de ${p}*\n\n`;
+    msg += `💰 *Receitas:* ${formatter.format(totalIncome)}\n`;
+    msg += `💸 *Despesas (Dinheiro/PIX/Débito):* ${formatter.format(totalRegular)}\n`;
+    if (totalCC > 0) {
+      msg += `💳 *Cartões de Crédito (Gasto no Mês):* ${formatter.format(totalCC)}\n`;
+    }
+    msg += `📈 *Investimentos/Caixinhas:* ${formatter.format(totalInvestments)}\n\n`;
+    msg += `*Saldo do Mês:* ${formatter.format(balance)}`;
+
+    await whatsappService.sendTextMessage(phone, msg);
+    return;
+  } catch (err) {
+    console.error('Error generating report:', err);
+    await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao gerar seu relatório. Tente novamente mais tarde.");
   }
 }
 

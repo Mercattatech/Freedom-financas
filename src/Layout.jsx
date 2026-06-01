@@ -78,6 +78,7 @@ export default function Layout({ children, currentPageName }) {
   const navItems = [
     { name: 'Dashboard', icon: Home, path: 'Dashboard' },
     { name: 'Transações', icon: Receipt, path: 'Transactions' },
+    { name: 'Relatórios', icon: PieChart, path: 'Reports' },
     { name: 'Orçamento', icon: PieChart, path: 'Budget' },
     { name: 'Metas', icon: Target, path: 'Goals' },
     { name: 'Dívidas', icon: CreditCard, path: 'Debts' },

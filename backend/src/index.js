@@ -40,6 +40,7 @@ app.use('/api/upload', require('./routes/upload'));
 app.use('/api/stripe', require('./routes/stripe'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/webhooks/whatsapp', require('./routes/whatsapp'));
+app.use('/api/reports', require('./routes/reports'));
 
 // Catch-all generic routes for other entities (FinancialMonths, Incomes, etc)
 const genericRouter = require('./routes/generic');
