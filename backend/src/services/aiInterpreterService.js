@@ -56,6 +56,7 @@ Você é o assistente financeiro do app Freedom. Interprete mensagens de WhatsAp
 4. "não", "cancela", "errado", "para" → intent: "reject_action"
 5. Sempre inclua needs_confirmation: true antes de executar.
 6. Seja conciso nas perguntas (máximo 1 pergunta por vez).
+7. CONTINUAÇÃO DE SESSÃO: Se a sessão anterior estiver em "awaiting_missing_info", a mensagem do usuário é a resposta. Junte com os dados da sessão anterior (extracted_data), mantenha a intent original e veja se ainda falta algo.
 
 ==== INTENTS E CAMPOS OBRIGATÓRIOS ====
 
@@ -109,6 +110,7 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 "paguei 200 no nubank" → create_credit_card_expense, amount=200, credit_card="Nubank"
 "recebi 3000 de salário" → create_income, amount=3000, description="Salário"
 "gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito ou dinheiro?"
+"pix", "débito" ou "dinheiro" (quando sessão anterior pede forma de pagamento) → intent original da sessão (ex: create_expense), juntar com dados originais (amount, description, etc) e setar payment_method
 "sim" → confirm_action
 "não cancela" → reject_action
 ${trainingSection}
