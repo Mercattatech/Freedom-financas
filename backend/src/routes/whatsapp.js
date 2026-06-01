@@ -63,17 +63,12 @@ router.post('/', async (req, res) => {
     if (existingMessage) return res.sendStatus(200);
 
     // 3. Identificar usuário pelo telefone
-    // Nota: O telefone da Meta vem no formato 5511999999999. 
-    // Pode ser necessário normalizar dependendo de como está salvo no banco.
     const user = await prisma.user.findFirst({
       where: { 
         OR: [
           { whatsapp_phone: phone },
           { whatsapp_phone: phone.replace(/^55/, '') } // Tenta sem o DDI 55
         ]
-      },
-      include: {
-        families: { take: 1 } // Pega a primeira família por padrão
       }
     });
 
@@ -112,27 +107,30 @@ router.post('/', async (req, res) => {
       orderBy: { created_at: 'desc' }
     });
 
-    // 5. Preparar contexto para a IA
-    const family = user.families[0];
+    // 5. Buscar a família mais ativa do usuário (com mais categorias = mais configurada)
+    const userFamilies = await prisma.family.findMany({
+      where: { created_by: user.email },
+      include: { _count: { select: { categories: true } } },
+      orderBy: { created_date: 'asc' }
+    });
+
+    // Escolhe a família com mais categorias (heurística de "família principal")
+    const family = userFamilies.sort((a, b) => (b._count.categories - a._count.categories))[0];
+
     if (!family) {
       await whatsappService.sendTextMessage(phone, "Você ainda não possui uma Família cadastrada no sistema. Crie uma família primeiro.");
       return res.sendStatus(200);
     }
 
-    const [categories, accounts, creditCards] = await Promise.all([
+    const [categories, creditCards] = await Promise.all([
       prisma.category.findMany({ where: { family_id: family.id, ativo: true } }),
-      // No schema atual, 'accounts' parece ser implícito ou vir de algum lugar. 
-      // Vou buscar categorias do tipo RECEITA como "Contas" se necessário, 
-      // ou apenas passar o que temos.
-      prisma.category.findMany({ where: { family_id: family.id, tipo: 'RECEITA' } }),
       prisma.creditCard.findMany({ where: { family_id: family.id, ativo: true } })
     ]);
 
     const interpretationContext = {
       currentDate: new Date().toISOString().split('T')[0],
-      userTimezone: 'America/Sao_Paulo', // Poderia vir do User futuramente
+      userTimezone: 'America/Sao_Paulo',
       categories,
-      accounts,
       creditCards,
       lastSession: session ? {
         state: session.state,
