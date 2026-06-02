@@ -43,7 +43,8 @@ class AIInterpreterService {
     } = context;
 
     const creditCardList = creditCards.map(cc => cc.nome).join(', ') || 'nenhum';
-    const categoryList = categories.map(c => c.nome).join(', ') || 'nenhuma';
+    const categoryListMenu = categories.map((c, i) => `${i + 1} - ${c.nome}`).join('\n') || 'nenhuma';
+    const categoryListNames = categories.map(c => c.nome).join(', ') || 'nenhuma';
     const singleCard = creditCards.length === 1 ? creditCards[0].nome : null;
 
     const systemPrompt = `
@@ -59,6 +60,7 @@ Você é o assistente financeiro do app Freedom. Interprete mensagens de WhatsAp
 7. CONTINUAÇÃO DE SESSÃO: Se a sessão anterior estiver em "awaiting_missing_info", a mensagem do usuário é a resposta. Junte com os dados da sessão anterior (extracted_data), mantenha a intent original e veja se ainda falta algo.
 8. CATEGORIZAÇÃO: Para o campo "category", você DEVE usar EXATAMENTE o mesmo nome (idêntico) de uma categoria da lista fornecida. Se o gasto ou receita não tiver uma categoria explícita na mensagem, retorne "category": null para que caia em missing_fields. NÃO INVENTE CATEGORIAS.
 9. LEITURA DE IMAGENS: Se uma imagem for fornecida (comprovante ou nota), extraia o valor, a data e a forma de pagamento. A descrição (description) deve ser o mais detalhada possível, incluindo o nome do estabelecimento e a hora da compra, se constarem na imagem.
+10. MENU DE CATEGORIAS: Se o usuário responder apenas com um NÚMERO para a categoria, mapeie esse número para o nome correspondente na lista do menu fornecida no contexto.
 
 ==== INTENTS E CAMPOS OBRIGATÓRIOS ====
 
@@ -72,26 +74,27 @@ create_expense (débito, PIX, dinheiro, boleto, carnê):
     "dinheiro", "espécie" → DINHEIRO
     "débito", "debito" → DEBITO
   Se payment_method não informado: pergunte "Foi no PIX, débito ou dinheiro?"
-  Se category não informado: pergunte "Qual a categoria? Categorias: ${categoryList}"
+  Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_credit_card_expense (cartão de crédito):
   OBRIGATÓRIO: amount (VALOR TOTAL DA COMPRA, não da parcela), description, credit_card, category
   OPCIONAL: date (padrão: ${currentDate}), installments (número de parcelas)
   Cartões disponíveis: ${creditCardList}
   ${singleCard ? `Há apenas 1 cartão (${singleCard}) — use-o automaticamente sem perguntar.` : 'Se não informar o cartão, pergunte qual.'}
-  Se category não informado: pergunte "Qual a categoria? Categorias: ${categoryList}"
+  Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_income (receita, salário, entrada):
   OBRIGATÓRIO: amount, description, category
   OPCIONAL: date (padrão: ${currentDate})
-  Se category não informado: pergunte "Qual a categoria? Categorias: ${categoryList}"
+  Se category não informado: pergunte "Qual a categoria da receita? Responda com o número:\n${categoryListMenu}"
 
-generate_report (relatório, resumo, fechamento do mês, extrato):
-  OBRIGATÓRIO: period (mês solicitado)
-  Formatos de period permitidos: "YYYY-MM".
+generate_report (relatório, resumo, fechamento do mês, extrato, relatório do dia):
+  OBRIGATÓRIO: period (período solicitado)
+  Formatos de period permitidos: "YYYY-MM-DD" (para um dia específico) ou "YYYY-MM" (para um mês inteiro).
+  Se o usuário disser "hoje" ou "de hoje", retorne "${currentDate}".
   Se o usuário disser "este mês", "desse mês", retorne "${currentDate.substring(0, 7)}".
   Se pedir do mês passado, subtraia 1 mês e retorne no formato YYYY-MM.
-  Se disser algo sem data clara, assuma "${currentDate.substring(0, 7)}".
+  Se disser algo sem data clara, assuma "${currentDate}".
   needs_confirmation deve ser FALSE para relatórios.
 
 list_expenses (listar lançamentos, listar gastos):
@@ -105,7 +108,10 @@ update_expense (alterar lançamento, trocar valor, mudar para pix):
   needs_confirmation deve ser TRUE.
 
 ==== CONTEXTO ====
-Categorias: ${categoryList}
+Menu de Categorias Disponíveis:
+${categoryListMenu}
+
+Lista de Categorias (Nomes): ${categoryListNames}
 Data atual: ${currentDate} | Timezone: ${userTimezone}
 Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 

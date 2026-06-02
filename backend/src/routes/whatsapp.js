@@ -585,14 +585,16 @@ async function executePendingAction(session, user, phone, family) {
 
 async function handleReportRequest(user, family, period, phone) {
   try {
+    const isDaily = period && period.length === 10;
     const p = period || new Date().toISOString().substring(0, 7);
+    const monthPeriod = p.substring(0, 7);
     
     const financialMonth = await prisma.financialMonth.findUnique({
-      where: { family_id_competencia: { family_id: family.id, competencia: p } }
+      where: { family_id_competencia: { family_id: family.id, competencia: monthPeriod } }
     });
 
     if (!financialMonth) {
-      return await whatsappService.sendTextMessage(phone, `Não encontrei dados financeiros para o período ${p}.`);
+      return await whatsappService.sendTextMessage(phone, `Não encontrei dados financeiros para o período ${monthPeriod}.`);
     }
 
     const [incomes, expenses, investmentBoxes, stocks] = await Promise.all([
@@ -601,6 +603,33 @@ async function handleReportRequest(user, family, period, phone) {
       prisma.investmentBox.findMany({ where: { family_id: family.id, ativo: true } }),
       prisma.stockInvestment.findMany({ where: { family_id: family.id, ativo: true } })
     ]);
+
+    const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    if (isDaily) {
+      const dayExpenses = expenses.filter(e => e.data === p);
+      const dayIncomes = incomes.filter(i => i.data_recebimento === p);
+
+      const dayTotalExpense = dayExpenses.reduce((sum, e) => sum + Number(e.valor), 0);
+      const dayTotalIncome = dayIncomes.reduce((sum, i) => sum + Number(i.valor), 0);
+
+      const totalMonthIncome = incomes.reduce((sum, i) => sum + Number(i.valor), 0);
+      const regularMonthExpenses = expenses.filter(e => !e.credit_card_id || e.is_fatura_cartao);
+      const totalMonthRegular = regularMonthExpenses.reduce((sum, e) => sum + Number(e.valor), 0);
+      
+      const balance = totalMonthIncome - totalMonthRegular;
+
+      let msg = `📊 *Resumo do Dia ${p.split('-').reverse().join('/')}*\n\n`;
+      msg += `💰 *Receita na Conta (Total do Mês):* ${formatter.format(totalMonthIncome)}\n`;
+      msg += `💸 *Despesas de Hoje:* ${formatter.format(dayTotalExpense)}\n`;
+      if (dayTotalIncome > 0) {
+        msg += `🟢 *Receitas de Hoje:* ${formatter.format(dayTotalIncome)}\n`;
+      }
+      msg += `\n💵 *Saldo Atualizado (Mês):* ${formatter.format(balance)}`;
+
+      await whatsappService.sendTextMessage(phone, msg);
+      return;
+    }
 
     const totalIncome = incomes.reduce((sum, i) => sum + Number(i.valor), 0);
     const regularExpenses = expenses.filter(e => !e.credit_card_id || e.is_fatura_cartao);
@@ -613,8 +642,6 @@ async function handleReportRequest(user, family, period, phone) {
       + stocks.reduce((sum, s) => sum + Number(s.saldo_atual), 0);
 
     const balance = totalIncome - totalRegular;
-
-    const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
     let msg = `📊 *Resumo Financeiro de ${p}*\n\n`;
     msg += `💰 *Receitas:* ${formatter.format(totalIncome)}\n`;
