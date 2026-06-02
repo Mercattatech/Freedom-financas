@@ -36,12 +36,14 @@ router.post('/', async (req, res) => {
   const phone = message.from;
   const messageId = message.id;
 
-  // 1. Aceita texto e áudio; ignora outros tipos
-  if (!['text', 'audio'].includes(message.type)) {
+  // 1. Aceita texto, áudio e imagem; ignora outros tipos
+  if (!['text', 'audio', 'image'].includes(message.type)) {
     return res.sendStatus(200);
   }
 
   let messageText = message.text?.body || null;
+  let base64Image = null;
+  let mimeType = null;
 
   if (message.type === 'audio') {
     try {
@@ -51,9 +53,20 @@ router.post('/', async (req, res) => {
       await whatsappService.sendTextMessage(phone, '🎙️ Não consegui entender o áudio. Pode tentar enviar uma mensagem de texto?');
       return res.sendStatus(200);
     }
+  } else if (message.type === 'image') {
+    try {
+      messageText = message.image.caption || null;
+      const mediaData = await downloadMedia(message.image.id);
+      base64Image = mediaData.buffer.toString('base64');
+      mimeType = mediaData.mimeType;
+    } catch (err) {
+      console.error('Image download error:', err.message);
+      await whatsappService.sendTextMessage(phone, '🖼️ Não consegui baixar a imagem. Tente novamente ou digite a mensagem.');
+      return res.sendStatus(200);
+    }
   }
 
-  if (!messageText) return res.sendStatus(200);
+  if (!messageText && !base64Image) return res.sendStatus(200);
 
   try {
     // 2. Proteção contra duplicidade
@@ -225,7 +238,9 @@ router.post('/', async (req, res) => {
         intent: session.intent,
         extracted_data: session.extracted_data,
         pending_action: session.pending_action
-      } : null
+      } : null,
+      base64Image,
+      mimeType
     };
 
     // 10. Chamar IA
@@ -242,27 +257,33 @@ router.post('/', async (req, res) => {
   }
 });
 
-async function transcribeAudio(mediaId) {
+async function downloadMedia(mediaId) {
   const accessToken = await configService.get('WHATSAPP_ACCESS_TOKEN');
   const apiVersion = await configService.get('WHATSAPP_API_VERSION', 'v21.0');
 
-  // 1. Obtém a URL de download do arquivo
   const mediaRes = await axios.get(
     `https://graph.facebook.com/${apiVersion}/${mediaId}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const mediaUrl = mediaRes.data.url;
+  const mimeType = mediaRes.data.mime_type;
 
-  // 2. Baixa o arquivo de áudio como buffer
-  const audioRes = await axios.get(mediaUrl, {
+  const fileRes = await axios.get(mediaUrl, {
     headers: { Authorization: `Bearer ${accessToken}` },
     responseType: 'arraybuffer'
   });
 
-  // 3. Transcreve com OpenAI Whisper
+  return {
+    buffer: Buffer.from(fileRes.data),
+    mimeType: mimeType || fileRes.headers['content-type'] || 'image/jpeg'
+  };
+}
+
+async function transcribeAudio(mediaId) {
+  const { buffer } = await downloadMedia(mediaId);
   const openaiKey = await configService.get('OPENAI_API_KEY');
   const openai = new OpenAI({ apiKey: openaiKey });
-  const buffer = Buffer.from(audioRes.data);
+  
   const file = new File([buffer], 'audio.ogg', { type: 'audio/ogg' });
 
   const transcription = await openai.audio.transcriptions.create({

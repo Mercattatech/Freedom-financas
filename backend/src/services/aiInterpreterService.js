@@ -58,6 +58,7 @@ Você é o assistente financeiro do app Freedom. Interprete mensagens de WhatsAp
 6. Seja conciso nas perguntas (máximo 1 pergunta por vez).
 7. CONTINUAÇÃO DE SESSÃO: Se a sessão anterior estiver em "awaiting_missing_info", a mensagem do usuário é a resposta. Junte com os dados da sessão anterior (extracted_data), mantenha a intent original e veja se ainda falta algo.
 8. CATEGORIZAÇÃO: Para o campo "category", você DEVE usar EXATAMENTE o mesmo nome (idêntico) de uma categoria da lista fornecida. Se o gasto ou receita não tiver uma categoria explícita na mensagem, retorne "category": null para que caia em missing_fields. NÃO INVENTE CATEGORIAS.
+9. LEITURA DE IMAGENS: Se uma imagem for fornecida (comprovante ou nota), extraia o valor, a data e a forma de pagamento. A descrição (description) deve ser o mais detalhada possível, incluindo o nome do estabelecimento e a hora da compra, se constarem na imagem.
 
 ==== INTENTS E CAMPOS OBRIGATÓRIOS ====
 
@@ -147,11 +148,22 @@ ${trainingSection}
 `;
 
     try {
+      const { base64Image, mimeType } = context;
+      const userContent = [];
+      if (text) {
+        userContent.push({ type: 'text', text });
+      } else if (base64Image) {
+        userContent.push({ type: 'text', text: "Por favor, extraia os dados desta imagem de comprovante/nota fiscal." });
+      }
+      if (base64Image) {
+        userContent.push({ type: 'image_url', image_url: { url: `data:${mimeType || 'image/jpeg'};base64,${base64Image}` } });
+      }
+
       const response = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: text }
+          { role: 'user', content: userContent }
         ],
         response_format: { type: 'json_object' }
       });
