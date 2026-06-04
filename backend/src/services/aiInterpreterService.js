@@ -45,6 +45,7 @@ class AIInterpreterService {
     const creditCardList = creditCards.map(cc => cc.nome).join(', ') || 'nenhum';
     const categoryListMenu = categories.map((c, i) => `${i + 1} - ${c.nome}`).join('\n') || 'nenhuma';
     const categoryListNames = categories.map(c => c.nome).join(', ') || 'nenhuma';
+    const creditCardListMenu = creditCards.map((cc, i) => `${i + 1} - ${cc.nome}`).join('\n') || 'nenhum';
     const singleCard = creditCards.length === 1 ? creditCards[0].nome : null;
 
     const systemPrompt = `
@@ -60,7 +61,8 @@ Você é o assistente financeiro do app Freedom. Interprete mensagens de WhatsAp
 7. CONTINUAÇÃO DE SESSÃO: Se a sessão anterior estiver em "awaiting_missing_info", a mensagem do usuário é a resposta. Junte com os dados da sessão anterior (extracted_data), mantenha a intent original e veja se ainda falta algo.
 8. CATEGORIZAÇÃO: Para o campo "category", você DEVE usar EXATAMENTE o mesmo nome (idêntico) de uma categoria da lista fornecida. Se o gasto ou receita não tiver uma categoria explícita na mensagem, retorne "category": null para que caia em missing_fields. NÃO INVENTE CATEGORIAS.
 9. LEITURA DE IMAGENS: Se uma imagem for fornecida (comprovante ou nota), extraia o valor, a data e a forma de pagamento. A descrição (description) deve ser o mais detalhada possível, incluindo o nome do estabelecimento e a hora da compra, se constarem na imagem.
-10. MENU DE CATEGORIAS: Se o usuário responder apenas com um NÚMERO para a categoria, mapeie esse número para o nome correspondente na lista do menu fornecida no contexto.
+10. MENU NUMERADO: Se o usuário responder apenas com um NÚMERO para a categoria ou cartão de crédito, mapeie esse número para o nome correspondente na lista do menu fornecida no contexto.
+11. TRANSIÇÃO PARA CRÉDITO: Se a sessão estiver aguardando "payment_method" e o usuário responder "crédito" ou "cartão", mude a intent imediatamente para "create_credit_card_expense", repasse os dados já extraídos (amount, description, etc) e coloque missing_fields=["credit_card"].
 
 ==== INTENTS E CAMPOS OBRIGATÓRIOS ====
 
@@ -73,14 +75,14 @@ create_expense (débito, PIX, dinheiro, boleto, carnê):
     "pix", "transferência" → PIX
     "dinheiro", "espécie" → DINHEIRO
     "débito", "debito" → DEBITO
-  Se payment_method não informado: pergunte "Foi no PIX, débito ou dinheiro?"
+  Se payment_method não informado: pergunte "Foi no PIX, débito, dinheiro ou crédito?"
   Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_credit_card_expense (cartão de crédito):
   OBRIGATÓRIO: amount (VALOR TOTAL DA COMPRA, não da parcela), description, credit_card, category
   OPCIONAL: date (padrão: ${currentDate}), installments (número de parcelas)
   Cartões disponíveis: ${creditCardList}
-  ${singleCard ? `Há apenas 1 cartão (${singleCard}) — use-o automaticamente sem perguntar.` : 'Se não informar o cartão, pergunte qual.'}
+  ${singleCard ? `Há apenas 1 cartão (${singleCard}) — use-o automaticamente sem perguntar.` : `Se não informar o cartão, pergunte: Qual cartão? Responda com o número:\\n${creditCardListMenu}`}
   Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_income (receita, salário, entrada):
@@ -107,9 +109,15 @@ update_expense (alterar lançamento, trocar valor, mudar para pix):
   OPCIONAL: amount (novo valor), payment_method (nova forma), credit_card (novo cartão), category (nova categoria)
   needs_confirmation deve ser TRUE.
 
+help (ajuda, me ajude, o que você faz, comandos, como funciona):
+  needs_confirmation deve ser FALSE para ajuda.
+
 ==== CONTEXTO ====
 Menu de Categorias Disponíveis:
 ${categoryListMenu}
+
+Menu de Cartões Disponíveis:
+${creditCardListMenu}
 
 Lista de Categorias (Nomes): ${categoryListNames}
 Data atual: ${currentDate} | Timezone: ${userTimezone}
@@ -117,7 +125,7 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 
 ==== FORMATO DE SAÍDA ====
 {
-  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | confirm_action | reject_action | unknown",
+  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | help | confirm_action | reject_action | unknown",
   "confidence": 0.95,
   "data": {
     "amount": 100,
@@ -141,8 +149,9 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 "paguei 200 no nubank" → create_credit_card_expense, amount=200, credit_card="Nubank"
 "comprei um iphone por 5000 parcelado em 10x no itau" → create_credit_card_expense, amount=5000, description="Iphone", credit_card="Itau", installments=10
 "recebi 3000 de salário" → create_income, amount=3000, description="Salário"
-"gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito ou dinheiro?"
+"gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito, dinheiro ou crédito?"
 "pix", "débito" ou "dinheiro" (quando sessão anterior pede forma de pagamento) → intent original da sessão (ex: create_expense), juntar com dados originais (amount, description, etc) e setar payment_method
+"crédito" (quando sessão anterior pede forma de pagamento) → create_credit_card_expense, missing_fields=["credit_card"], user_question="Qual cartão? Responda com o número:\n[lista]"
 "mande o relatorio desse mes" → generate_report, period="${currentDate.substring(0, 7)}"
 "como foi meu mes passado?" → generate_report, period="[ano-mes_passado]"
 "liste os lancamentos de hoje" → list_expenses, date="${currentDate}"

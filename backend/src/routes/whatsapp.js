@@ -76,7 +76,7 @@ router.post('/', async (req, res) => {
     if (existingMessage) return res.sendStatus(200);
 
     // 3. Identificar usuário pelo telefone
-    const user = await prisma.user.findFirst({
+    let user = await prisma.user.findFirst({
       where: { 
         OR: [
           { whatsapp_phone: phone },
@@ -84,6 +84,21 @@ router.post('/', async (req, res) => {
         ]
       }
     });
+
+    if (!user) {
+      const allowedPhone = await prisma.whatsappAllowedPhone.findFirst({
+        where: {
+          OR: [
+            { phone: phone },
+            { phone: phone.replace(/^55/, '') }
+          ]
+        },
+        include: { user: true }
+      });
+      if (allowedPhone) {
+        user = allowedPhone.user;
+      }
+    }
 
     if (!user) {
       await whatsappService.sendTextMessage(phone, "Não encontrei seu WhatsApp vinculado a uma conta do sistema. Acesse o sistema e vincule este número antes de usar os lançamentos por WhatsApp.");
@@ -301,6 +316,19 @@ async function handleIntent(aiResult, user, phone, session, family) {
   // Se for relatório
   if (intent === 'generate_report') {
     return await handleReportRequest(user, family, data.period, phone);
+  }
+
+  // Se for ajuda
+  if (intent === 'help') {
+    const helpMsg = `🤖 *Como posso ajudar?*\n\n` +
+      `Posso te ajudar a organizar suas finanças! Veja o que você pode me pedir:\n\n` +
+      `💸 *Despesas:* "Gastei 50 no mercado no pix", "Comprei um lanche por 30 no cartão"\n` +
+      `💰 *Receitas:* "Recebi 3000 de salário"\n` +
+      `📋 *Listar:* "Liste os lançamentos de hoje" ou "Liste os gastos de ontem"\n` +
+      `✏️ *Editar:* (Após listar) "Altere o lançamento 1 para boleto"\n` +
+      `📊 *Relatórios:* "Mande o relatório desse mês" ou "Resumo de hoje"\n\n` +
+      `Pode mandar texto, áudio ou foto de comprovante!`;
+    return await whatsappService.sendTextMessage(phone, helpMsg);
   }
 
   // Se for listagem de gastos
