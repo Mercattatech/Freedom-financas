@@ -319,6 +319,8 @@ async function transcribeAudio(mediaId) {
 
 // Responde diretamente a campos faltantes sem chamar a IA (evita loops)
 async function handleMissingFieldResponse(session, user, phone, family, messageText, categories, creditCards) {
+  if (!messageText) return false; // Se for imagem sem legenda, deixa a IA tentar extrair ou processar como novo lançamento
+
   const currentField = session.missing_fields[0];
   const extractedData = { ...(session.extracted_data || {}) };
   const intent = session.intent;
