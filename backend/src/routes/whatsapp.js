@@ -274,7 +274,7 @@ router.post('/', async (req, res) => {
     return res.sendStatus(200);
   } catch (error) {
     console.error('Error processing WhatsApp webhook:', error);
-    await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao processar sua mensagem. Tente novamente mais tarde.");
+    await whatsappService.sendTextMessage(phone, `Ocorreu um erro interno: ${error.message}\n\nStack:\n${error.stack.substring(0, 500)}`);
     return res.sendStatus(200);
   }
 });
