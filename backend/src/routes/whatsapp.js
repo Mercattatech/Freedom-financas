@@ -243,6 +243,12 @@ router.post('/', async (req, res) => {
       prisma.creditCard.findMany({ where: { family_id: family.id, ativo: true } })
     ]);
 
+    // 9.5. Se sessão está aguardando um campo específico, responder diretamente sem IA
+    if (session?.state === 'awaiting_missing_info' && session.missing_fields?.length > 0) {
+      const handled = await handleMissingFieldResponse(session, user, phone, family, messageText, categories, creditCards);
+      if (handled) return res.sendStatus(200);
+    }
+
     const interpretationContext = {
       currentDate: new Date().toISOString().split('T')[0],
       userTimezone: 'America/Sao_Paulo',
@@ -252,6 +258,7 @@ router.post('/', async (req, res) => {
         state: session.state,
         intent: session.intent,
         extracted_data: session.extracted_data,
+        missing_fields: session.missing_fields,
         pending_action: session.pending_action
       } : null,
       base64Image,
@@ -308,6 +315,156 @@ async function transcribeAudio(mediaId) {
   });
 
   return transcription.text;
+}
+
+// Responde diretamente a campos faltantes sem chamar a IA (evita loops)
+async function handleMissingFieldResponse(session, user, phone, family, messageText, categories, creditCards) {
+  const currentField = session.missing_fields[0];
+  const extractedData = { ...(session.extracted_data || {}) };
+  const intent = session.intent;
+  let fieldValue = null;
+
+  if (currentField === 'payment_method') {
+    const t = messageText.trim().toLowerCase();
+    if (/créd|cred|cartão|cartao/.test(t)) {
+      // Transição para crédito
+      extractedData.payment_method = 'CARTAO_CREDITO';
+      let newMissing = [];
+      if (creditCards.length === 1) {
+        extractedData.credit_card = creditCards[0].nome;
+      } else {
+        newMissing.push('credit_card');
+      }
+      if (!extractedData.installments) newMissing.push('installments');
+      if (!extractedData.category) newMissing.push('category');
+
+      await prisma.whatsappSession.update({
+        where: { id: session.id },
+        data: { intent: 'create_credit_card_expense', extracted_data: extractedData, missing_fields: newMissing, updated_at: new Date() }
+      });
+
+      if (newMissing.length === 0) {
+        const updatedSession = await prisma.whatsappSession.findUnique({ where: { id: session.id } });
+        await sendConfirmation(updatedSession, phone, 'create_credit_card_expense', extractedData);
+      } else {
+        await askNextField(newMissing[0], creditCards, categories, phone);
+      }
+      return true;
+    } else if (/pix/.test(t))              fieldValue = 'PIX';
+    else if (/déb|deb/.test(t))            fieldValue = 'DEBITO';
+    else if (/din|espe/.test(t))           fieldValue = 'DINHEIRO';
+    else if (/boleto|carnê|carne/.test(t)) fieldValue = 'BOLETO';
+    else {
+      await whatsappService.sendTextMessage(phone, 'Foi no PIX, débito, dinheiro ou crédito?');
+      return true;
+    }
+    extractedData.payment_method = fieldValue;
+
+  } else if (currentField === 'credit_card') {
+    const num = parseInt(messageText.trim());
+    if (!isNaN(num) && num >= 1 && num <= creditCards.length) {
+      extractedData.credit_card = creditCards[num - 1].nome;
+    } else {
+      const card = creditCards.find(c => c.nome.toLowerCase().includes(messageText.trim().toLowerCase()));
+      if (card) {
+        extractedData.credit_card = card.nome;
+      } else {
+        const opts = creditCards.map((c, i) => `${i + 1} - ${c.nome}`).join('\n');
+        await whatsappService.sendTextMessage(phone, `Qual cartão? Responda com o número:\n${opts}`);
+        return true;
+      }
+    }
+
+  } else if (currentField === 'installments') {
+    const match = messageText.match(/(\d+)/);
+    if (match) {
+      extractedData.installments = parseInt(match[1]);
+    } else {
+      await whatsappService.sendTextMessage(phone, 'Em quantas parcelas? (Responda 1 para à vista)');
+      return true;
+    }
+
+  } else if (currentField === 'category') {
+    const num = parseInt(messageText.trim());
+    if (!isNaN(num) && num >= 1 && num <= categories.length) {
+      extractedData.category = categories[num - 1].nome;
+    } else {
+      const cat = categories.find(c => c.nome.toLowerCase().includes(messageText.trim().toLowerCase()));
+      if (cat) {
+        extractedData.category = cat.nome;
+      } else {
+        const opts = categories.map((c, i) => `${i + 1} - ${c.nome}`).join('\n');
+        await whatsappService.sendTextMessage(phone, `Qual a categoria? Responda com o número:\n${opts}`);
+        return true;
+      }
+    }
+
+  } else {
+    // Campo não reconhecido — deixa a IA tratar
+    return false;
+  }
+
+  // Remove o campo respondido e verifica o próximo
+  const remainingFields = session.missing_fields.filter(f => f !== currentField);
+
+  if (remainingFields.length > 0) {
+    await prisma.whatsappSession.update({
+      where: { id: session.id },
+      data: { extracted_data: extractedData, missing_fields: remainingFields, updated_at: new Date() }
+    });
+    await askNextField(remainingFields[0], creditCards, categories, phone);
+  } else {
+    // Todos os campos preenchidos → pedir confirmação
+    await prisma.whatsappSession.update({
+      where: { id: session.id },
+      data: {
+        state: 'awaiting_confirmation',
+        extracted_data: extractedData,
+        missing_fields: [],
+        pending_action: { intent, data: extractedData },
+        updated_at: new Date()
+      }
+    });
+    await sendConfirmation(session, phone, intent, extractedData);
+  }
+
+  return true;
+}
+
+async function askNextField(field, creditCards, categories, phone) {
+  const creditCardListMenu = creditCards.map((cc, i) => `${i + 1} - ${cc.nome}`).join('\n');
+  const categoryListMenu = categories.map((c, i) => `${i + 1} - ${c.nome}`).join('\n');
+
+  if (field === 'payment_method') {
+    await whatsappService.sendTextMessage(phone, 'Foi no PIX, débito, dinheiro ou crédito?');
+  } else if (field === 'credit_card') {
+    await whatsappService.sendTextMessage(phone, `Qual cartão? Responda com o número:\n${creditCardListMenu}`);
+  } else if (field === 'installments') {
+    await whatsappService.sendTextMessage(phone, 'Em quantas parcelas? (Responda 1 para à vista)');
+  } else if (field === 'category') {
+    await whatsappService.sendTextMessage(phone, `Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}`);
+  }
+}
+
+async function sendConfirmation(session, phone, intent, data) {
+  const formatter = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  const amount = parseFloat(data.amount) || 0;
+  const installments = parseInt(data.installments) || 1;
+
+  let msg = `✅ *Confirmar lançamento?*\n\n`;
+  msg += `📝 ${data.description || 'Lançamento'}\n`;
+  msg += `💰 ${formatter.format(amount)}`;
+  if (installments > 1) msg += ` *(${installments}x de ${formatter.format(amount / installments)})*`;
+  msg += `\n📅 ${data.date || new Date().toISOString().split('T')[0]}`;
+  if (intent === 'create_credit_card_expense') {
+    msg += `\n💳 Cartão: ${data.credit_card}`;
+  } else if (data.payment_method) {
+    msg += `\n💳 ${data.payment_method}`;
+  }
+  if (data.category) msg += `\n📂 ${data.category}`;
+  msg += `\n\nResponda *sim* para confirmar ou *não* para cancelar.`;
+
+  await whatsappService.sendTextMessage(phone, msg);
 }
 
 async function handleIntent(aiResult, user, phone, session, family) {

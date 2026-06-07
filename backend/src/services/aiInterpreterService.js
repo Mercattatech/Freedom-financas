@@ -79,10 +79,11 @@ create_expense (débito, PIX, dinheiro, boleto, carnê):
   Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_credit_card_expense (cartão de crédito):
-  OBRIGATÓRIO: amount (VALOR TOTAL DA COMPRA, não da parcela), description, credit_card, category
-  OPCIONAL: date (padrão: ${currentDate}), installments (número de parcelas)
+  OBRIGATÓRIO: amount (VALOR TOTAL DA COMPRA, não da parcela), description, credit_card, category, installments
+  OPCIONAL: date (padrão: ${currentDate})
   Cartões disponíveis: ${creditCardList}
   ${singleCard ? `Há apenas 1 cartão (${singleCard}) — use-o automaticamente sem perguntar.` : `Se não informar o cartão, pergunte: Qual cartão? Responda com o número:\\n${creditCardListMenu}`}
+  Se installments não informado: pergunte "Em quantas parcelas? (Responda 1 para à vista)"
   Se category não informado: pergunte "Qual a categoria do gasto? Responda com o número:\n${categoryListMenu}"
 
 create_income (receita, salário, entrada):
@@ -150,8 +151,10 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 "comprei um iphone por 5000 parcelado em 10x no itau" → create_credit_card_expense, amount=5000, description="Iphone", credit_card="Itau", installments=10
 "recebi 3000 de salário" → create_income, amount=3000, description="Salário"
 "gastei 80 de ifood" (sem forma de pagamento) → create_expense, missing_fields=["payment_method"], user_question="Foi no PIX, débito, dinheiro ou crédito?"
-"pix", "débito" ou "dinheiro" (quando sessão anterior pede forma de pagamento) → intent original da sessão (ex: create_expense), juntar com dados originais (amount, description, etc) e setar payment_method
-"crédito" (quando sessão anterior pede forma de pagamento) → create_credit_card_expense, missing_fields=["credit_card"], user_question="Qual cartão? Responda com o número:\n[lista]"
+"pix", "débito" ou "dinheiro" (quando sessão anterior pede payment_method) → intent original da sessão, juntar com dados originais, setar payment_method
+"crédito" (quando sessão anterior pede payment_method) → create_credit_card_expense, missing_fields=["credit_card"], user_question="Qual cartão? Responda com o número:\n[lista]"
+"1" ou "Nubank" (quando sessão anterior pede credit_card) → intent: create_credit_card_expense, juntar com dados originais, setar credit_card correspondente
+"2" ou "em 2x" (quando sessão anterior pede installments) → intent original, juntar com dados originais, setar installments=2
 "mande o relatorio desse mes" → generate_report, period="${currentDate.substring(0, 7)}"
 "como foi meu mes passado?" → generate_report, period="[ano-mes_passado]"
 "liste os lancamentos de hoje" → list_expenses, date="${currentDate}"
