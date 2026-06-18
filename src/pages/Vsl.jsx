@@ -306,6 +306,7 @@ export default function Vsl() {
               </div>
             )}
           </div>
+          </div>
         </section>
 
         {/* COUNTDOWN E OFERTA */}
