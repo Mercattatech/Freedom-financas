@@ -91,7 +91,7 @@ export default function Layout({ children, currentPageName }) {
     { name: 'Famílias', icon: Users, path: 'Families' },
   ];
 
-  const isLandingPage = currentPageName === 'LandingPage' || currentPageName === 'Obrigado' || currentPageName === 'Login';
+  const isLandingPage = currentPageName === 'LandingPage' || currentPageName === 'Obrigado' || currentPageName === 'Login' || currentPageName === 'Vsl';
 
   if (isLandingPage) {
     return <>{children}</>;
