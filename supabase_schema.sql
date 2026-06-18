@@ -307,3 +307,12 @@ CREATE TABLE IF NOT EXISTS "LandingCms" (
   "created_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   "updated_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS "VslCms" (
+  "id" TEXT PRIMARY KEY DEFAULT 'singleton',
+  "video_url" TEXT,
+  "countdown_end_date" TIMESTAMP WITH TIME ZONE,
+  "redirect_url" TEXT,
+  "created_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  "updated_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

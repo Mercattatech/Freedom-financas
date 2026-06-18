@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 export default function Login() {
   const [searchParams] = useSearchParams();
   const setupToken = searchParams.get('token');
-  const [mode, setMode] = useState(setupToken ? 'setup-password' : 'login');
+  const modeParam = searchParams.get('mode');
+  const [mode, setMode] = useState(setupToken ? 'setup-password' : (modeParam || 'login'));
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({

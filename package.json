@@ -9,7 +9,7 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "postinstall": "prisma generate --schema=./backend/prisma/schema.prisma"
+    "postinstall": "prisma generate --schema=./backend/prisma/schema.prisma && cd backend && npm install && npx prisma generate"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

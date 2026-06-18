@@ -20,6 +20,7 @@ const TABS = [
   { id: 'plans', label: '💰 Planos & Preços' },
   { id: 'whatsapp', label: '💬 WhatsApp & IA' },
   { id: 'cms', label: '🎨 Landing Page (CMS)' },
+  { id: 'vsl', label: '🎥 Lançamento (VSL)' },
 ];
 
 // ─── CMS EDITOR ──────────────────────────────────────────────────────────────
@@ -237,6 +238,131 @@ function CMSEditor() {
         <Button className="bg-emerald-600 hover:bg-emerald-700 px-8" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
           {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Salvar todas as alterações
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── VSL CMS EDITOR ────────────────────────────────────────────────────────────
+
+const DEFAULT_VSL_CMS = {
+  video_url: '',
+  countdown_end_date: '',
+  redirect_url: ''
+};
+
+function VslCmsEditor() {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState(null);
+
+  const { data: vslCmsData, isLoading } = useQuery({
+    queryKey: ['vsl-cms'],
+    queryFn: () => apiClient.entities.VslCms.list(),
+  });
+
+  useEffect(() => {
+    if (vslCmsData && !form) {
+      const data = vslCmsData[0] || {};
+      // Format date for input type="datetime-local"
+      let formattedDate = '';
+      if (data.countdown_end_date) {
+        const d = new Date(data.countdown_end_date);
+        if (!isNaN(d)) {
+          formattedDate = d.toISOString().slice(0, 16);
+        }
+      }
+      setForm({ ...DEFAULT_VSL_CMS, ...data, countdown_end_date: formattedDate });
+    }
+  }, [vslCmsData]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data) => {
+      const existing = vslCmsData?.[0];
+      const payload = {
+        ...data,
+        countdown_end_date: data.countdown_end_date ? new Date(data.countdown_end_date).toISOString() : null
+      };
+      
+      if (existing?.id) {
+         if (existing.id === 'singleton') {
+            return apiClient.entities.VslCms.update('singleton', payload);
+         }
+         return apiClient.entities.VslCms.update(existing.id, payload);
+      }
+      return apiClient.entities.VslCms.create({ id: 'singleton', ...payload });
+    },
+    onSuccess: () => { 
+      queryClient.invalidateQueries({ queryKey: ['vsl-cms'] }); 
+      toast.success('Página de Lançamento (VSL) atualizada!'); 
+    },
+    onError: (e) => toast.error('Erro: ' + e.message),
+  });
+
+  const f = (v) => setForm(prev => ({ ...prev, ...v }));
+
+  if (isLoading || !form) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-emerald-500" /></div>;
+
+  const Field = ({ label, field, placeholder, hint, type = "text" }) => (
+    <div>
+      <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">{label}</label>
+      <input 
+        type={type}
+        value={form[field] || ''} 
+        onChange={e => f({ [field]: e.target.value })} 
+        placeholder={placeholder}
+        className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+      />
+      {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white">Configuração da Página VSL</h2>
+          <p className="text-slate-400 text-sm mt-1">Configure o vídeo, contador de urgência e redirecionamento final</p>
+        </div>
+        <div className="flex gap-3">
+          <a href="/vsl" target="_blank" rel="noopener noreferrer">
+            <Button variant="outline" size="sm" className="border-slate-700 text-slate-300 hover:bg-slate-800"><Eye className="w-4 h-4 mr-2" /> Ver página</Button>
+          </a>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />} Salvar
+          </Button>
+        </div>
+      </div>
+      
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 space-y-6">
+        <h3 className="font-bold text-white flex items-center gap-2 text-base mb-2">
+          <Eye className="w-5 h-5 text-emerald-500" /> Player de Vídeo Principal
+        </h3>
+        <Field 
+          label="URL do Vídeo (YouTube, Vimeo, MP4)" 
+          field="video_url" 
+          placeholder="https://www.youtube.com/watch?v=..." 
+          hint="Cole a URL do vídeo ou o código do iframe fornecido pela plataforma." 
+        />
+      </div>
+
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-6 space-y-6">
+        <h3 className="font-bold text-white flex items-center gap-2 text-base mb-2">
+          <RefreshCw className="w-5 h-5 text-emerald-500" /> Gatilho de Urgência (Countdown)
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field 
+            label="Data/Hora de Encerramento" 
+            field="countdown_end_date" 
+            type="datetime-local"
+            hint="Se definido, exibirá um contador regressivo na página. Ao atingir a data, o redirecionamento abaixo será ativado." 
+          />
+          <Field 
+            label="URL de Redirecionamento" 
+            field="redirect_url" 
+            placeholder="https://suapagina.com/fim-promocao" 
+            hint="A página de destino quando o contador chegar a zero. Ex: /Login ou um link externo." 
+          />
+        </div>
       </div>
     </div>
   );
@@ -470,6 +596,7 @@ export default function Admin() {
           {tab === 'plans' && <PlansEditor />}
           {tab === 'whatsapp' && <WhatsAppConfig />}
           {tab === 'cms' && <CMSEditor />}
+          {tab === 'vsl' && <VslCmsEditor />}
         </main>
       </div>
     </div>

@@ -25,6 +25,7 @@ import HelpCenter from './pages/HelpCenter';
 import CreditCards from './pages/CreditCards';
 import Profile from './pages/Profile';
 import Reports from './pages/Reports';
+import Vsl from './pages/Vsl';
 import __Layout from './Layout.jsx';
 
 
@@ -53,10 +54,11 @@ export const PAGES = {
     "CreditCards": CreditCards,
     "Profile": Profile,
     "Reports": Reports,
+    "Vsl": Vsl,
 }
 
 // Pages that don't require authentication
-export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado', 'Pricing', 'CheckoutSuccess', 'ResetPassword'];
+export const PUBLIC_PAGES = ['LandingPage', 'Login', 'Obrigado', 'Pricing', 'CheckoutSuccess', 'ResetPassword', 'Vsl'];
 
 export const pagesConfig = {
     mainPage: "LandingPage",

@@ -5,6 +5,18 @@ const { triggerRecalculo } = require('../services/creditCardBill');
 
 const prisma = new PrismaClient();
 
+// Ensure LandingCms.content column exists (idempotent, runs once per process)
+let landingCmsMigrated = false;
+async function ensureLandingCmsContent() {
+  if (landingCmsMigrated) return;
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "LandingCms" ADD COLUMN IF NOT EXISTS content JSONB`);
+    landingCmsMigrated = true;
+  } catch (e) {
+    landingCmsMigrated = true; // column already exists or DB error - don't retry endlessly
+  }
+}
+
 // Map Frontend Pluralized Endpoint Names to Prisma Model Names
 const ENDPOINT_TO_PRISMA_MODEL = {
   'financialmonths': 'financialMonth',
@@ -22,6 +34,7 @@ const ENDPOINT_TO_PRISMA_MODEL = {
   'users': 'user',
   'plans': 'plan',
   'landingcmss': 'landingCms',
+  'vslcmss': 'vslCms',
   'assets': 'asset',
   'creditcards': 'creditCard'
 };
@@ -55,7 +68,7 @@ function createGenericRouter() {
       }
 
       if (req.method === 'GET' || req.method === 'POST' || req.method === 'PUT' || req.method === 'DELETE') {
-        const globalEndpoints = ['plans', 'landingcmss', 'users', 'useraccesses'];
+        const globalEndpoints = ['plans', 'landingcmss', 'vslcmss', 'users', 'useraccesses'];
         // Entities that are scoped via month_id (their family_id comes from FinancialMonth)
         const monthScopedEntities = ['incomes', 'expenses', 'budgets'];
         
@@ -130,13 +143,14 @@ function createGenericRouter() {
         const parsedQuery = { ...req.query };
         if (parsedQuery.ativo === 'true') parsedQuery.ativo = true;
         if (parsedQuery.ativo === 'false') parsedQuery.ativo = false;
-        
+
         // For admin / global endpoints where role wasn't intercepted
         if (req.user.role !== 'admin') {
            if (entityParam === 'users') parsedQuery.email = req.user.email;
            if (entityParam === 'useraccesses') parsedQuery.user_email = req.user.email;
         }
 
+        if (entityParam === 'landingcmss') await ensureLandingCmsContent();
         const items = await model.findMany({ where: parsedQuery });
         return res.json(items);
       }

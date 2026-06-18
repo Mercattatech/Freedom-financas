@@ -440,7 +440,10 @@ model LandingCms {
   cta_final_btn        String?
 
   footer_texto         String?
-  
+
+  // Conteúdo estruturado da nova landing page (JSON)
+  content              Json?
+
   created_date         DateTime @default(now())
   updated_date         DateTime @updatedAt
 }
@@ -505,4 +508,13 @@ model WhatsappAllowedPhone {
   created_date DateTime @default(now())
 
   user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model VslCms {
+  id                   String    @id @default("singleton")
+  video_url            String?
+  countdown_end_date   DateTime?
+  redirect_url         String?
+  created_date         DateTime  @default(now())
+  updated_date         DateTime  @updatedAt
 }

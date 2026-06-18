@@ -125,6 +125,42 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 });
 
 // ────────────────────────────────────────────
+// POST /api/stripe/public-checkout
+// Cria sessão de checkout para assinar um plano sem precisar estar logado
+// ────────────────────────────────────────────
+router.post('/public-checkout', async (req, res) => {
+  try {
+    const { plan_id, interval = 'month' } = req.body;
+    
+    const plan = await prisma.plan.findUnique({ where: { id: plan_id } });
+    if (!plan || !plan.ativo) return res.status(404).json({ message: 'Plano não encontrado' });
+
+    const priceId = interval === 'year' ? plan.stripe_price_id_anual : (plan.stripe_price_id_mensal || plan.stripe_price_id);
+    if (!priceId) return res.status(400).json({ message: 'Este plano não tem um preço Stripe configurado.' });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{ price: priceId, quantity: 1 }],
+      mode: 'subscription',
+      subscription_data: {
+        trial_period_days: plan.trial_dias || 7,
+        metadata: { plan_id: plan.id }
+      },
+      success_url: `${frontendUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${frontendUrl}/?canceled=true`,
+      metadata: { plan_id: plan.id }
+    });
+
+    res.json({ url: session.url, session_id: session.id });
+  } catch (error) {
+    console.error('[STRIPE] public-checkout error:', error.message);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ────────────────────────────────────────────
 // POST /api/stripe/portal
 // Abre o Customer Portal do Stripe (cancelar, ver faturas, atualizar cartão)
 // ────────────────────────────────────────────
