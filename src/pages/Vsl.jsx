@@ -190,9 +190,14 @@ export default function Vsl() {
   };
 
   const handleSelectPlan = async (plan) => {
+    if (plan.payment_link) {
+      window.location.href = plan.payment_link;
+      return;
+    }
+
     const interval = plan.tipo?.toLowerCase() === 'anual' ? 'year' : 'month';
     const priceId = interval === 'year' ? plan.stripe_price_id_anual : (plan.stripe_price_id_mensal || plan.stripe_price_id);
-    
+
     if (!priceId) {
       toast.error('Este plano não está configurado para compra.');
       return;
@@ -236,14 +241,9 @@ export default function Vsl() {
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
       
       {/* HEADER MINIMALISTA */}
-      <header className="py-6 border-b border-slate-800/50 bg-slate-900/50 sticky top-0 z-50 backdrop-blur-md">
+      <header className="py-4 border-b border-slate-800/50 bg-slate-900/50 sticky top-0 z-50 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <span className="text-white font-black text-xl">F</span>
-            </div>
-            <span className="font-black text-white tracking-tight text-xl">Freedom</span>
-          </div>
+          <img src="/logo-free.png" alt="Freedom" className="h-12 object-contain" />
         </div>
       </header>
 

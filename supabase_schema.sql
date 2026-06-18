@@ -268,6 +268,7 @@ CREATE TABLE IF NOT EXISTS "Plan" (
   "ordem" INTEGER DEFAULT 0,
   "ativo" BOOLEAN DEFAULT true,
   "stripe_price_id" TEXT,
+  "payment_link" TEXT,
   "created_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   "updated_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

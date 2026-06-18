@@ -30,6 +30,7 @@ const emptyPlan = () => ({
   badge: '',
   upsell_texto: '',
   upsell_price_id: '',
+  payment_link: '',
   limite_familias: 1,
   cor: '#10B981',
   ordem: 0,
@@ -96,6 +97,7 @@ export default function AdminPlans() {
       badge: plan.badge || '',
       upsell_texto: plan.upsell_texto || '',
       upsell_price_id: plan.upsell_price_id || '',
+      payment_link: plan.payment_link || '',
       limite_familias: plan.limite_familias || 1,
       cor: plan.cor || '#10B981',
       ordem: plan.ordem || 0,
@@ -243,6 +245,13 @@ export default function AdminPlans() {
             <div className="md:col-span-2">
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Stripe Price ID do Upsell</label>
               <Input placeholder="price_xxxxx (do Stripe)" value={form.upsell_price_id} onChange={e => f({ upsell_price_id: e.target.value })} />
+            </div>
+
+            {/* Link de Pagamento Direto */}
+            <div className="md:col-span-2">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Link de Pagamento Direto</label>
+              <Input placeholder="Ex: https://buy.stripe.com/xxxx ou link do Hotmart" value={form.payment_link} onChange={e => f({ payment_link: e.target.value })} />
+              <p className="text-xs text-slate-400 mt-1">Quando preenchido, o botão na VSL vai direto para este link sem passar pelo checkout interno</p>
             </div>
 
             {/* Cor */}
