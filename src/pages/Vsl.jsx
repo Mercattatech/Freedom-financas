@@ -4,6 +4,7 @@ import { apiClient } from '@/api/apiClient';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, ShieldCheck, HeartHandshake, Clock, Users, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 // Helper to render video from URL or Iframe string
 const VideoPlayer = ({ urlOrIframe }) => {
@@ -18,13 +19,14 @@ const VideoPlayer = ({ urlOrIframe }) => {
   let embedUrl = urlOrIframe;
   if (urlOrIframe.includes('youtube.com/watch?v=')) {
     const videoId = new URLSearchParams(new URL(urlOrIframe).search).get('v');
-    embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&disablekb=1&modestbranding=1&rel=0`;
   } else if (urlOrIframe.includes('youtu.be/')) {
     const videoId = urlOrIframe.split('youtu.be/')[1].split('?')[0];
-    embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&disablekb=1&modestbranding=1&rel=0`;
   } else if (urlOrIframe.includes('vimeo.com/')) {
     const videoId = urlOrIframe.split('vimeo.com/')[1].split('?')[0];
-    embedUrl = `https://player.vimeo.com/video/${videoId}?autoplay=1`;
+    embedUrl = `https://player.vimeo.com/video/${videoId}?autoplay=1&background=1&muted=0`; // For vimeo background=1 hides controls, or controls=0. Actually controls=0 is better. Let's use controls=0.
+    embedUrl = `https://player.vimeo.com/video/${videoId}?autoplay=1&controls=0&title=0&byline=0&portrait=0`;
   }
 
   return (
@@ -44,6 +46,16 @@ export default function Vsl() {
   const [timeLeft, setTimeLeft] = useState(null);
   const [viewers, setViewers] = useState(1342);
   const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [hasCommented, setHasCommented] = useState(false);
+  const [loadingPlan, setLoadingPlan] = useState(null);
+
+  // Fetch Current User
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => apiClient.auth.me(),
+    retry: false
+  });
 
   // Fetch VSL Config
   const { data: vslData, isLoading: isLoadingVsl } = useQuery({
@@ -154,6 +166,66 @@ export default function Vsl() {
     return () => clearInterval(interval);
   }, []);
 
+  const handleAddComment = (e) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    
+    const myComment = {
+      name: "Você",
+      text: newComment,
+      time: "Agora mesmo"
+    };
+    
+    const STORAGE_KEY = 'vsl_comments_state';
+    setComments(prev => {
+      const updated = [myComment, ...prev];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ timestamp: Date.now(), comments: updated }));
+      return updated;
+    });
+    setNewComment('');
+    setHasCommented(true);
+    
+    // Simulate someone reading and hide the "You commented" after a while if desired,
+    // but usually it's fine to just leave it in the feed.
+  };
+
+  const handleSelectPlan = async (plan) => {
+    if (!user) {
+      navigate(`/register?plan=${plan.id}`);
+      return;
+    }
+
+    const interval = plan.tipo?.toLowerCase() === 'anual' ? 'year' : 'month';
+    const priceId = interval === 'year' ? plan.stripe_price_id_anual : plan.stripe_price_id_mensal;
+    
+    if (!priceId) {
+      toast.error('Este plano não está disponível para compra ainda.');
+      return;
+    }
+
+    setLoadingPlan(plan.id);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({ plan_id: plan.id, interval })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast.error(data.message || 'Erro ao iniciar pagamento.');
+      }
+    } catch (e) {
+      toast.error('Erro de conexão');
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
   if (isLoadingVsl || isLoadingPlans) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -165,19 +237,7 @@ export default function Vsl() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-emerald-500/30">
       
-      {/* HEADER MINIMALISTA */}
-      <header className="py-6 border-b border-slate-800/50 bg-slate-900/50 sticky top-0 z-50 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-center">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <span className="text-white font-black text-xl">F</span>
-            </div>
-            <span className="font-black text-white tracking-tight text-xl">Freedom</span>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-12 md:py-20 space-y-20">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 md:py-12 space-y-20">
         
         {/* HERO E VÍDEO */}
         <section className="space-y-8 text-center">
@@ -197,11 +257,19 @@ export default function Vsl() {
 
           <div className="max-w-4xl mx-auto mt-8 relative">
             <VideoPlayer urlOrIframe={vslConfig.video_url} />
-            
-            {/* Comentários flutuantes (Social Proof) */}
-            <div className="absolute -bottom-6 md:bottom-10 md:-right-16 w-full md:w-80 flex flex-col gap-3 pointer-events-none px-4 md:px-0">
-              {comments.slice(0, 3).map((comment, i) => (
-                <div key={i} className="bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-700/50 shadow-2xl transform transition-all duration-500 ease-out animate-in slide-in-from-right-8 fade-in flex gap-3 text-left">
+          </div>
+          
+          {/* USER COMMENT INPUT E FEED */}
+          <div className="max-w-2xl mx-auto mt-12 bg-slate-900/50 p-4 md:p-6 rounded-2xl border border-slate-800 backdrop-blur-sm text-left">
+            <h3 className="text-white font-bold mb-6 flex items-center gap-2 text-lg">
+              <MessageSquare className="w-5 h-5 text-emerald-500" />
+              Comentários ao vivo
+            </h3>
+
+            {/* FEED DE COMENTÁRIOS (exibindo até 6) */}
+            <div className="flex flex-col gap-4 mb-6">
+              {comments.slice(0, 6).map((comment, i) => (
+                <div key={i} className="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex gap-3 text-left animate-in slide-in-from-bottom-2 fade-in duration-300">
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold shrink-0">
                     {comment.name.charAt(0)}
                   </div>
@@ -210,11 +278,33 @@ export default function Vsl() {
                       <p className="text-sm font-bold text-white">{comment.name}</p>
                       <span className="text-[10px] text-slate-500">{comment.time}</span>
                     </div>
-                    <p className="text-xs text-slate-300 mt-1">{comment.text}</p>
+                    <p className="text-sm text-slate-300 mt-1">{comment.text}</p>
                   </div>
                 </div>
               ))}
             </div>
+
+            <div className="border-t border-slate-800 pt-6">
+            {!hasCommented ? (
+              <form onSubmit={handleAddComment} className="flex flex-col gap-3">
+                <textarea 
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 resize-none h-20"
+                  placeholder="O que você está achando da aula?"
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  maxLength={150}
+                ></textarea>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-6">
+                    Enviar
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="text-center py-6 text-emerald-400 font-medium bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                Obrigado pelo seu comentário! 🎉
+              </div>
+            )}
           </div>
         </section>
 
@@ -275,10 +365,11 @@ export default function Vsl() {
                   </ul>
 
                   <Button 
-                    className={`w-full py-6 text-lg font-bold rounded-xl mt-auto ${plan.destaque ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
-                    onClick={() => navigate('/Pricing')}
+                    className={`w-full py-6 text-lg font-bold rounded-xl mt-auto flex items-center justify-center ${plan.destaque ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-white'}`}
+                    onClick={() => handleSelectPlan(plan)}
+                    disabled={loadingPlan === plan.id}
                   >
-                    Assinar {plan.nome}
+                    {loadingPlan === plan.id ? <Loader2 className="w-5 h-5 animate-spin" /> : `Assinar ${plan.nome}`}
                   </Button>
                 </div>
               ))}
