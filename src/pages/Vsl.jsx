@@ -10,11 +10,11 @@ import { toast } from 'sonner';
 const VideoPlayer = ({ urlOrIframe }) => {
   if (!urlOrIframe) return null;
   
-  // If it's already an iframe string
-  if (urlOrIframe.trim().startsWith('<iframe')) {
+  // Se for um código HTML (iframe, div, etc)
+  if (urlOrIframe.trim().startsWith('<')) {
     return (
       <div 
-        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0" 
+        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>div]:w-full [&>div]:h-full" 
         dangerouslySetInnerHTML={{ __html: urlOrIframe }} 
       />
     );
@@ -274,7 +274,7 @@ export default function Vsl() {
           </div>
 
           <div className="max-w-4xl mx-auto mt-8 relative">
-            <VideoPlayer urlOrIframe={vslConfig.video_url} />
+            <VideoPlayer urlOrIframe={vslConfig.video_embed || vslConfig.video_url} />
           </div>
           
           {/* USER COMMENT INPUT E FEED */}

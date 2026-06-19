@@ -513,6 +513,7 @@ model WhatsappAllowedPhone {
 model VslCms {
   id                   String    @id @default("singleton")
   video_url            String?
+  video_embed          String?
   countdown_end_date   DateTime?
   redirect_url         String?
   created_date         DateTime  @default(now())

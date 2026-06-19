@@ -247,6 +247,7 @@ function CMSEditor() {
 
 const DEFAULT_VSL_CMS = {
   video_url: '',
+  video_embed: '',
   countdown_end_date: '',
   redirect_url: ''
 };
@@ -302,16 +303,26 @@ function VslCmsEditor() {
 
   if (isLoading || !form) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-emerald-500" /></div>;
 
-  const Field = ({ label, field, placeholder, hint, type = "text" }) => (
+  const Field = ({ label, field, placeholder, hint, type = "text", multiline = false }) => (
     <div>
       <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">{label}</label>
-      <input 
-        type={type}
-        value={form[field] || ''} 
-        onChange={e => f({ [field]: e.target.value })} 
-        placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
-      />
+      {multiline ? (
+        <textarea
+          value={form[field] || ''} 
+          onChange={e => f({ [field]: e.target.value })} 
+          placeholder={placeholder}
+          rows={4}
+          className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white p-3 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono" 
+        />
+      ) : (
+        <input 
+          type={type}
+          value={form[field] || ''} 
+          onChange={e => f({ [field]: e.target.value })} 
+          placeholder={placeholder}
+          className="w-full rounded-lg border border-slate-700 bg-slate-800 text-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" 
+        />
+      )}
       {hint && <p className="text-xs text-slate-500 mt-1">{hint}</p>}
     </div>
   );
@@ -338,10 +349,17 @@ function VslCmsEditor() {
           <Eye className="w-5 h-5 text-emerald-500" /> Player de Vídeo Principal
         </h3>
         <Field 
-          label="URL do Vídeo (YouTube, Vimeo, MP4)" 
+          label="URL do Vídeo (YouTube, Vimeo)" 
           field="video_url" 
           placeholder="https://www.youtube.com/watch?v=..." 
-          hint="Cole a URL do vídeo ou o código do iframe fornecido pela plataforma." 
+          hint="Use este campo se tiver apenas o link direto do YouTube/Vimeo." 
+        />
+        <Field 
+          label="Código Embed (Opcional - Substitui a URL acima)" 
+          field="video_embed" 
+          placeholder="<iframe src='...' width='100%' height='100%'></iframe>" 
+          hint="Cole o código HTML/iframe fornecido pela plataforma (PandaVideo, Vimeo, etc.). Se preenchido, este código terá prioridade sobre a URL." 
+          multiline={true}
         />
       </div>
 

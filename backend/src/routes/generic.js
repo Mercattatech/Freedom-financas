@@ -17,6 +17,18 @@ async function ensureLandingCmsContent() {
   }
 }
 
+// Ensure VslCms.video_embed column exists
+let vslCmsMigrated = false;
+async function ensureVslCmsEmbed() {
+  if (vslCmsMigrated) return;
+  try {
+    await prisma.$executeRawUnsafe(`ALTER TABLE "VslCms" ADD COLUMN IF NOT EXISTS video_embed TEXT`);
+    vslCmsMigrated = true;
+  } catch (e) {
+    vslCmsMigrated = true;
+  }
+}
+
 // Map Frontend Pluralized Endpoint Names to Prisma Model Names
 const ENDPOINT_TO_PRISMA_MODEL = {
   'financialmonths': 'financialMonth',
@@ -151,6 +163,7 @@ function createGenericRouter() {
         }
 
         if (entityParam === 'landingcmss') await ensureLandingCmsContent();
+        if (entityParam === 'vslcmss') await ensureVslCmsEmbed();
         const items = await model.findMany({ where: parsedQuery });
         return res.json(items);
       }
