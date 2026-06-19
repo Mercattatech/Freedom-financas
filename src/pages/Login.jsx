@@ -229,10 +229,7 @@ export default function Login() {
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center mx-auto shadow-2xl shadow-emerald-500/30 mb-4">
-            <span className="text-white font-black text-2xl">F</span>
-          </div>
-          <h1 className="text-3xl font-black text-white">Freedom</h1>
+          <img src="/logo-free.png" alt="Freedom" className="h-14 object-contain mx-auto mb-4" />
           <p className="text-slate-400 text-sm mt-1">Gestão Financeira Familiar</p>
         </div>
 
@@ -402,15 +399,6 @@ export default function Login() {
 
 
                 <p className="text-center text-slate-500 text-sm mt-6 flex flex-col gap-2">
-                  <span>Não tem conta?{' '}
-                    <button
-                      type="button"
-                      onClick={() => setMode('register')}
-                      className="text-emerald-400 hover:text-emerald-300 font-semibold transition-colors"
-                    >
-                      Criar conta grátis
-                    </button>
-                  </span>
                   <span>Já tem um código?{' '}
                     <button
                       type="button"
