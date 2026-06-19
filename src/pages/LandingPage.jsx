@@ -1228,8 +1228,6 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      <button className="lp-wa-fab" onClick={() => go('planos')} aria-label="Falar no WhatsApp">💬</button>
-
       <SignupModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
