@@ -285,7 +285,7 @@ const LP_CSS = `
 
 // ─── DEFAULT CMS CONTENT ──────────────────────────────────────────────────────
 export const DEFAULT_CMS_CONTENT = {
-  navbar: { brand: 'Freedom', ctaText: 'Crie sua Conta 7 dias Grátis' },
+  navbar: { brand: 'Freedom', ctaText: 'Entrar na minha conta' },
   tracking: {
     gtm: '',
     ga4: '',
@@ -295,7 +295,7 @@ export const DEFAULT_CMS_CONTENT = {
     label: 'Gestão Financeira com IA',
     headline: 'Liberdade financeira começa aqui',
     sub: 'O sistema completo para famílias controlarem finanças, orçamentos, dívidas e investimentos — tudo pelo WhatsApp.',
-    cta1: 'Crie sua Conta 7 dias Grátis',
+    cta1: 'Ver os planos',
     cta2: 'Ver como funciona',
   },
   whatsapp: {
@@ -390,9 +390,9 @@ export const DEFAULT_CMS_CONTENT = {
     { q: 'Posso cancelar quando quiser?', a: 'Sim, sem multa ou fidelidade. Garantia de reembolso de 7 dias sem perguntas.' },
   ],
   cta: {
-    headline: 'Comece hoje. É grátis.',
+    headline: 'Comece a organizar hoje.',
     sub: 'Junte-se às 2.400+ famílias que já controlam suas finanças com liberdade.',
-    btn: 'Crie sua conta',
+    btn: 'Assinar o Freedom',
   },
   footer: {
     brand: 'Freedom',
@@ -778,7 +778,7 @@ export default function LandingPage() {
             ))}
             <li><a href="/Login" style={{ color: 'var(--ink)', fontWeight: 700 }}>Entrar</a></li>
           </ul>
-          <button className="lp-nav-cta" onClick={openModal}>{cms.navbar.ctaText}</button>
+          <button className="lp-nav-cta" onClick={() => go('planos')}>{cms.navbar.ctaText}</button>
           <button className="lp-ham" onClick={() => setMobileOpen(true)} aria-label="Menu"><span /><span /><span /></button>
         </nav>
       </header>
@@ -806,7 +806,7 @@ export default function LandingPage() {
             </h1>
             <p {...rv(2)} className="lp-hero-sub">{cms.hero.sub}</p>
             <div {...rv(3)} className="lp-hero-btns">
-              <button className="btn-primary" onClick={openModal}>🚀 {cms.hero.cta1}</button>
+              <button className="btn-primary" onClick={() => go('planos')}>🚀 {cms.hero.cta1}</button>
               <button className="btn-ghost" onClick={() => go('whatsapp')}>▶ {cms.hero.cta2}</button>
             </div>
           </div>
@@ -1132,8 +1132,8 @@ export default function LandingPage() {
             <h2 {...rv(1)} className="lp-h2" style={{ fontFamily: "'Sora',sans-serif" }}>{cms.about.headline}</h2>
             <p {...rv(2)} className="lp-lead">{cms.about.sub}</p>
             <div {...rv(3)} style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <button className="btn-primary" onClick={openModal}>Começar agora</button>
-              <button className="btn-ghost" onClick={openModal}>💬 WhatsApp</button>
+              <button className="btn-primary" onClick={() => go('planos')}>Começar agora</button>
+              <button className="btn-ghost" onClick={() => go('planos')}>💬 WhatsApp</button>
             </div>
           </div>
           <div {...rv(2)}>
@@ -1175,8 +1175,8 @@ export default function LandingPage() {
           <h2 {...rv()} style={{ fontFamily: "'Sora',sans-serif" }}>{cms.cta.headline}</h2>
           <p {...rv(1)}>{cms.cta.sub}</p>
           <div {...rv(2)} className="lp-cta-btns">
-            <button className="btn-primary" onClick={openModal}>🚀 {cms.cta.btn}</button>
-            <button className="btn-ghost" onClick={openModal}>💬 Falar no WhatsApp</button>
+            <button className="btn-primary" onClick={() => go('planos')}>🚀 {cms.cta.btn}</button>
+            <button className="btn-ghost" onClick={() => go('planos')}>💬 Falar no WhatsApp</button>
           </div>
         </div>
       </section>
@@ -1228,7 +1228,7 @@ export default function LandingPage() {
         </div>
       </footer>
 
-      <button className="lp-wa-fab" onClick={openModal} aria-label="Falar no WhatsApp">💬</button>
+      <button className="lp-wa-fab" onClick={() => go('planos')} aria-label="Falar no WhatsApp">💬</button>
 
       <SignupModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
