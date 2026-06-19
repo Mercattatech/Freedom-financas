@@ -70,14 +70,27 @@ function CMSEditor() {
   });
 
   useEffect(() => {
-    if (cmsData && !form) setForm({ ...DEFAULT_CMS, ...(cmsData[0] || {}) });
+    if (cmsData && !form) {
+      const data = cmsData[0] || {};
+      const trackingGtm = data.content?.tracking?.gtm || '';
+      setForm({ ...DEFAULT_CMS, ...data, tracking_gtm: trackingGtm });
+    }
   }, [cmsData]);
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
       const existing = cmsData?.[0];
-      if (existing?.id) return apiClient.entities.LandingCMS.update(existing.id, data);
-      return apiClient.entities.LandingCMS.create(data);
+      const payload = { ...data };
+      
+      // Salva o GTM dentro do JSONB content
+      payload.content = { 
+        ...(existing?.content || {}), 
+        tracking: { ...(existing?.content?.tracking || {}), gtm: payload.tracking_gtm } 
+      };
+      delete payload.tracking_gtm;
+
+      if (existing?.id) return apiClient.entities.LandingCMS.update(existing.id, payload);
+      return apiClient.entities.LandingCMS.create(payload);
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['landing-cms'] }); toast.success('Landing page atualizada!'); },
     onError: (e) => toast.error('Erro: ' + e.message),
@@ -233,6 +246,15 @@ function CMSEditor() {
 
       <Section title="CTA Final"><Field label="Título" field="cta_final_titulo" /><Field label="Subtítulo" field="cta_final_subtitulo" /><Field label="Texto do Botão" field="cta_final_btn" /></Section>
       <Section title="Rodapé"><Field label="Texto de Copyright" field="footer_texto" /></Section>
+      <Section title="Rastreamento & Analytics (GTM)">
+        <Field 
+          label="Google Tag Manager (GTM)" 
+          field="tracking_gtm" 
+          placeholder="GTM-XXXXXXX ou código do script inteiro" 
+          hint="Cole aqui o seu ID do GTM ou o código completo do <script>. Ele será inserido automaticamente em todas as páginas do sistema para rastrear conversões." 
+          multiline={true}
+        />
+      </Section>
 
       <div className="flex justify-end pb-8">
         <Button className="bg-emerald-600 hover:bg-emerald-700 px-8" onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>

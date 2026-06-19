@@ -134,6 +134,7 @@ const AuthenticatedApp = () => {
 
 
 import { ThemeProvider } from 'next-themes';
+import GtmInjector from '@/components/GtmInjector';
 
 function App() {
 
@@ -142,6 +143,7 @@ function App() {
       <AuthProvider>
         <QueryClientProvider client={queryClientInstance}>
           <Router>
+            <GtmInjector />
             <NavigationTracker />
             <AuthenticatedApp />
           </Router>
