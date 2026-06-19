@@ -12,7 +12,12 @@ const VideoPlayer = ({ urlOrIframe }) => {
   
   // If it's already an iframe string
   if (urlOrIframe.trim().startsWith('<iframe')) {
-    return <div className="video-container" dangerouslySetInnerHTML={{ __html: urlOrIframe }} />;
+    return (
+      <div 
+        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0" 
+        dangerouslySetInnerHTML={{ __html: urlOrIframe }} 
+      />
+    );
   }
 
   // If it's a YouTube URL
@@ -25,7 +30,6 @@ const VideoPlayer = ({ urlOrIframe }) => {
     embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&disablekb=1&modestbranding=1&rel=0`;
   } else if (urlOrIframe.includes('vimeo.com/')) {
     const videoId = urlOrIframe.split('vimeo.com/')[1].split('?')[0];
-    embedUrl = `https://player.vimeo.com/video/${videoId}?autoplay=1&background=1&muted=0`; // For vimeo background=1 hides controls, or controls=0. Actually controls=0 is better. Let's use controls=0.
     embedUrl = `https://player.vimeo.com/video/${videoId}?autoplay=1&controls=0&title=0&byline=0&portrait=0`;
   }
 
@@ -44,7 +48,7 @@ const VideoPlayer = ({ urlOrIframe }) => {
 export default function Vsl() {
   const navigate = useNavigate();
   const [timeLeft, setTimeLeft] = useState(null);
-  const [viewers, setViewers] = useState(1342);
+  const [viewers, setViewers] = useState(25);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [hasCommented, setHasCommented] = useState(false);
@@ -104,11 +108,17 @@ export default function Vsl() {
 
   // Fake Viewers Logic
   useEffect(() => {
-    const baseViewers = Math.floor(Math.random() * 50) + 1200;
+    const baseViewers = Math.floor(Math.random() * 41) + 4; // Entre 4 e 45
     setViewers(baseViewers);
     
     const interval = setInterval(() => {
-      setViewers(prev => prev + (Math.floor(Math.random() * 5) - 2)); // Float by -2 to +2
+      setViewers(prev => {
+        const change = Math.floor(Math.random() * 5) - 2; // -2 a +2
+        let next = prev + change;
+        if (next < 4) next = 4;
+        if (next > 45) next = 45;
+        return next;
+      });
     }, 3000);
     return () => clearInterval(interval);
   }, []);
