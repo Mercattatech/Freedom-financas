@@ -137,6 +137,15 @@ export const apiClient = {
     }
   },
 
+  assistant: {
+    async chat(messages) {
+      return await apiFetch('/assistant/chat', {
+        method: 'POST',
+        body: JSON.stringify({ messages })
+      });
+    }
+  },
+
   stripe: {
     async checkout(planId, interval) {
       return await apiFetch('/stripe/checkout', {

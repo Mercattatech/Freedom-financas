@@ -135,6 +135,7 @@ const AuthenticatedApp = () => {
 
 import { ThemeProvider } from 'next-themes';
 import GtmInjector from '@/components/GtmInjector';
+import AIAssistant from '@/components/AIAssistant';
 
 function App() {
 
@@ -144,6 +145,7 @@ function App() {
         <QueryClientProvider client={queryClientInstance}>
           <Router>
             <GtmInjector />
+            <AIAssistant />
             <NavigationTracker />
             <AuthenticatedApp />
           </Router>
