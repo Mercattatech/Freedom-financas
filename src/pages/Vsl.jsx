@@ -12,9 +12,13 @@ const VideoPlayer = ({ urlOrIframe }) => {
   
   // Se for um código HTML (iframe, div, etc)
   if (urlOrIframe.trim().startsWith('<')) {
+    // Checa se o código já inclui um wrapper responsivo (ex: Loom, Panda, Vimeo)
+    const hasResponsiveWrapper = urlOrIframe.includes('padding-bottom') || urlOrIframe.includes('padding-top');
+    
     return (
       <div 
-        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-2xl [&_div]:!bg-transparent [&_iframe]:!absolute [&_iframe]:!top-0 [&_iframe]:!left-0 [&_iframe]:!w-full [&_iframe]:!h-full [&_iframe]:!border-0 [&_iframe]:!bg-black" 
+        className={`w-full rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-2xl flex items-center justify-center
+        ${hasResponsiveWrapper ? '[&>div]:!w-full [&_iframe]:!w-full [&_iframe]:!h-full' : 'relative aspect-video [&_iframe]:!absolute [&_iframe]:!top-0 [&_iframe]:!left-0 [&_iframe]:!w-full [&_iframe]:!h-full [&_iframe]:!border-0'}`} 
         dangerouslySetInnerHTML={{ __html: urlOrIframe }} 
       />
     );
