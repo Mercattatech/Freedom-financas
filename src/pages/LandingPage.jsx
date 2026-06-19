@@ -807,7 +807,7 @@ export default function LandingPage() {
             <p {...rv(2)} className="lp-hero-sub">{cms.hero.sub}</p>
             <div {...rv(3)} className="lp-hero-btns">
               <button className="btn-primary" onClick={() => go('planos')}>🚀 {cms.hero.cta1}</button>
-              <button className="btn-ghost" onClick={() => go('whatsapp')}>▶ {cms.hero.cta2}</button>
+              <button className="btn-ghost" onClick={() => window.location.href = '/vsl'}>▶ {cms.hero.cta2}</button>
             </div>
           </div>
           <div className="lp-phone-wrap">
