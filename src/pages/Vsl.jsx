@@ -14,7 +14,7 @@ const VideoPlayer = ({ urlOrIframe }) => {
   if (urlOrIframe.trim().startsWith('<')) {
     return (
       <div 
-        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>div]:w-full [&>div]:h-full" 
+        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-2xl [&_div]:!bg-transparent [&_iframe]:!absolute [&_iframe]:!top-0 [&_iframe]:!left-0 [&_iframe]:!w-full [&_iframe]:!h-full [&_iframe]:!border-0 [&_iframe]:!bg-black" 
         dangerouslySetInnerHTML={{ __html: urlOrIframe }} 
       />
     );
