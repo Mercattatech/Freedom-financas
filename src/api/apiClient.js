@@ -137,6 +137,21 @@ export const apiClient = {
     }
   },
 
+  stripe: {
+    async checkout(planId, interval) {
+      return await apiFetch('/stripe/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: planId, interval })
+      });
+    },
+    async publicCheckout(planId, interval) {
+      return await apiFetch('/stripe/public-checkout', {
+        method: 'POST',
+        body: JSON.stringify({ plan_id: planId, interval })
+      });
+    }
+  },
+
   // Generic Entity Mapping to REST API
   entities: new Proxy({}, {
     get(target, model) {

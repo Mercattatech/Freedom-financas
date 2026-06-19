@@ -190,40 +190,38 @@ export default function Vsl() {
   };
 
   const handleSelectPlan = async (plan) => {
-    if (plan.payment_link) {
-      window.location.href = plan.payment_link;
-      return;
-    }
+    console.log("[VSL] Clicou no plano:", plan);
 
     const interval = plan.tipo?.toLowerCase() === 'anual' ? 'year' : 'month';
     const priceId = interval === 'year' ? plan.stripe_price_id_anual : (plan.stripe_price_id_mensal || plan.stripe_price_id);
-
+    
     if (!priceId) {
-      toast.error('Este plano não está configurado para compra.');
+      console.error('[VSL] Plano sem ID do Stripe:', plan);
+      alert('Este plano ainda não está configurado para compra no Stripe. Fale com o suporte.');
       return;
     }
 
     setLoadingPlan(plan.id);
     try {
-      const endpoint = user ? '/api/stripe/checkout' : '/api/stripe/public-checkout';
-      const headers = { 'Content-Type': 'application/json' };
+      console.log(`[VSL] Iniciando checkout (user=${!!user}, interval=${interval}, priceId=${priceId})`);
+      let data;
+      
       if (user) {
-        headers['Authorization'] = `Bearer ${localStorage.getItem('access_token')}`;
+        data = await apiClient.stripe.checkout(plan.id, interval);
+      } else {
+        data = await apiClient.stripe.publicCheckout(plan.id, interval);
       }
+      
+      console.log("[VSL] Retorno do checkout:", data);
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ plan_id: plan.id, interval })
-      });
-      const data = await res.json();
-      if (data.url) {
+      if (data && data.url) {
         window.location.href = data.url;
       } else {
-        toast.error(data.message || 'Erro ao iniciar pagamento.');
+        alert(data?.message || 'Erro ao iniciar pagamento. URL não retornada.');
       }
     } catch (e) {
-      toast.error('Erro de conexão');
+      console.error('[VSL] Erro de conexão no checkout:', e);
+      alert(e.message || 'Erro de conexão com o servidor de pagamentos.');
     } finally {
       setLoadingPlan(null);
     }
