@@ -53,7 +53,28 @@ const ENDPOINT_TO_PRISMA_MODEL = {
 
 function createGenericRouter() {
   const router = express.Router();
-  router.use(authenticateToken);
+  
+  // Custom middleware to allow public GET access to certain entities
+  router.use((req, res, next) => {
+    const isPublicGet = req.method === 'GET' && req.path.match(/^\/(plans|landingcmss|vslcmss)(\/|$)/i);
+    if (isPublicGet) {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+      if (token) {
+        const jwt = require('jsonwebtoken');
+        jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+          if (!err) req.user = user;
+          else req.user = { role: 'guest' };
+          next();
+        });
+      } else {
+        req.user = { role: 'guest' };
+        next();
+      }
+    } else {
+      authenticateToken(req, res, next);
+    }
+  });
 
   // Using two separate paths instead of regex to avoid path-to-regexp errors in newer Express versions
   router.all(['/:entity', '/:entity/:id'], async (req, res, next) => {
