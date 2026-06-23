@@ -136,7 +136,7 @@ router.post('/', async (req, res) => {
         `📊 *Relatórios e Listagens:* "Resumo de hoje", "Liste os gastos de ontem"\n` +
         `✏️ *Editar:* (Após listar) "Altere o lançamento 1 para boleto"\n` +
         `📅 *Agendamentos:* "Marque uma reunião amanhã às 15h"\n` +
-        `💬 *E muito mais:* Receitas fitness, dicas de filmes, clima, ações e futebol!\n\n` +
+        `💬 *E muito mais:* Investimentos (com conselhos de especialista!), devocionais diários, receitas fitness, filmes, clima e futebol!\n\n` +
         `Você pode me mandar texto, áudio ou até foto de comprovantes! Como posso te ajudar hoje?`;
       await whatsappService.sendTextMessage(phone, welcomeMsg);
     }
@@ -507,7 +507,8 @@ async function handleIntent(aiResult, user, phone, session, family) {
       `⏰ *"Marque uma reunião amanhã às 15h"*\n` +
       `🗓️ *"Me lembre do dentista dia 20 às 10h"*\n\n` +
       `💬 *3. ASSISTENTE PESSOAL (Bate-papo):*\n` +
-      `📈 *Investimentos:* *"Quais as 10 melhores ações para investir?"*\n` +
+      `📈 *Investimentos:* *"Quais as 10 melhores ações para investir?"* (Responderei como um especialista!)\n` +
+      `📖 *Devocional:* *"Me dê um devocional para começar o dia"*\n` +
       `⛅ *Clima:* *"Qual a previsão do tempo para São Paulo nesta semana?"*\n` +
       `🍿 *Filmes:* *"Me dê uma lista de filmes para assistir com a família"*\n` +
       `⚽ *Esportes:* *"Qual o resultado do jogo do Real Madrid e onde assistir o próximo?"*\n` +

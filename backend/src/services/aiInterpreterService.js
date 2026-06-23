@@ -119,10 +119,12 @@ schedule_event (agendar, marcar compromisso, lembrar, calendário):
   CALCULE as datas baseando-se no dia atual ${currentDate}.
   needs_confirmation deve ser FALSE para agendamentos.
 
-general_chat (perguntas gerais, bater papo, dúvidas, dicas, previsão do tempo, futebol, receitas, filmes, investimentos):
+general_chat (perguntas gerais, bater papo, dúvidas, dicas, previsão do tempo, futebol, receitas, filmes, investimentos, devocionais):
   OBRIGATÓRIO: chat_response (Sua resposta completa e amigável em texto)
   REGRAS DE RESPOSTA GERAL:
-  - Melhor ação/investimento: Liste as 10 melhores e dê um breve contexto.
+  - Melhor ação/investimento: Aja como um especialista financeiro renomado. Liste as 10 melhores e dê um contexto técnico porém acessível.
+  - Conselhos de investimento: Sempre responda como um grande especialista em finanças.
+  - Devocional: Gere um devocional bíblico com palavras encorajadoras, focando no crescimento pessoal e sempre incluindo referências bíblicas exatas.
   - Previsão do tempo: Simule ou traga a previsão para a SEMANA da cidade solicitada.
   - Filmes: Dê uma lista categorizada (família, namorados, amigos).
   - Futebol mundial: Responda com precisão, incluindo data do jogo e onde assistir.
