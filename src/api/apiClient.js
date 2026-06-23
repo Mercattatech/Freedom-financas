@@ -198,6 +198,12 @@ export const apiClient = {
           return await apiFetch(endpoint);
         },
         async filter(query = {}) {
+          if (endpoint === '/families') {
+            const selectedId = localStorage.getItem('selectedFamilyId');
+            if (selectedId) {
+              query.include_admin_selected_id = selectedId;
+            }
+          }
           const params = new URLSearchParams(query).toString();
           return await apiFetch(`${endpoint}?${params}`);
         },

@@ -11,9 +11,21 @@ router.use(authenticateToken);
 // GET /api/families
 router.get('/', async (req, res) => {
   try {
-    const families = await prisma.family.findMany({
+    const { include_admin_selected_id } = req.query;
+
+    let families = await prisma.family.findMany({
       where: { created_by: req.user.email }
     });
+
+    if (include_admin_selected_id && req.user.role === 'admin') {
+      const clientFamily = await prisma.family.findUnique({
+        where: { id: include_admin_selected_id }
+      });
+      if (clientFamily && !families.find(f => f.id === clientFamily.id)) {
+        families = [clientFamily, ...families];
+      }
+    }
+
     res.json(families);
   } catch (error) {
     res.status(500).json({ error: error.message });
