@@ -11,7 +11,7 @@ export default function AdminFamilies() {
 
   const { data: families = [], isLoading } = useQuery({
     queryKey: ['admin-families'],
-    queryFn: () => apiClient.get('/admin/families'),
+    queryFn: () => apiClient.admin.getFamilies(),
   });
 
   const filtered = families.filter(f => 

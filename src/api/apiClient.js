@@ -160,6 +160,12 @@ export const apiClient = {
     }
   },
 
+  admin: {
+    async getFamilies() {
+      return await apiFetch('/admin/families');
+    }
+  },
+
   stripe: {
     async checkout(planId, interval) {
       return await apiFetch('/stripe/checkout', {
