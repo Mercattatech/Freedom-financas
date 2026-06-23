@@ -253,6 +253,15 @@ CREATE TABLE IF NOT EXISTS "UserAccess" (
   "updated_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS "WhatsappAllowedPhone" (
+  "id" TEXT PRIMARY KEY,
+  "user_id" TEXT NOT NULL,
+  "phone" TEXT UNIQUE NOT NULL,
+  "name" TEXT,
+  "created_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS "Plan" (
   "id" TEXT PRIMARY KEY,
   "nome" TEXT NOT NULL,
