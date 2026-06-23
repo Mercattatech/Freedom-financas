@@ -35,9 +35,20 @@ export default function CheckoutSuccess() {
         <p className="text-slate-400 mb-2">
           Sua assinatura foi ativada com sucesso.
         </p>
-        <p className="text-emerald-400 font-medium mb-8">
+        <p className="text-emerald-400 font-medium mb-4">
           ✨ 7 dias de trial gratuito estão correndo — aproveite!
         </p>
+
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 mb-6 text-left">
+          <h3 className="font-bold text-emerald-400 mb-2 flex items-center gap-2">
+            <CheckCircle className="w-5 h-5" />
+            Próximos passos
+          </h3>
+          <p className="text-sm text-slate-300 leading-relaxed">
+            Enviamos um link para o seu <strong>e-mail</strong> e uma mensagem no <strong>WhatsApp</strong>. 
+            Acesse para criar sua senha e liberar o acesso ao aplicativo!
+          </p>
+        </div>
 
         <div className="bg-slate-700/50 rounded-xl p-4 mb-8 text-left space-y-2">
           <p className="text-sm text-slate-300 flex items-center gap-2">

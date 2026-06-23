@@ -376,4 +376,105 @@ router.get('/whatsapp-number', async (req, res) => {
   }
 });
 
+// ────────────────────────────────────────────
+// GERENCIAMENTO DE NÚMEROS EXTRAS DE WHATSAPP
+// ────────────────────────────────────────────
+
+// GET /api/auth/whatsapp-numbers
+router.get('/whatsapp-numbers', authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        whatsappAllowedPhones: true,
+        plan: true
+      }
+    });
+
+    const limit = user.plan?.limite_numeros_whatsapp || user.limite_numeros_whatsapp || 1;
+    const extraNumbers = user.whatsappAllowedPhones || [];
+    const mainNumber = user.whatsapp_phone ? { id: 'main', phone: user.whatsapp_phone, name: 'Principal', isMain: true } : null;
+
+    res.json({
+      limit,
+      mainNumber,
+      extraNumbers
+    });
+  } catch (error) {
+    res.status(500).json({ status: 500, message: error.message });
+  }
+});
+
+// POST /api/auth/whatsapp-numbers
+router.post('/whatsapp-numbers', authenticateToken, async (req, res) => {
+  try {
+    const { phone, name } = req.body;
+    if (!phone) return res.status(400).json({ status: 400, message: 'O telefone é obrigatório.' });
+
+    const cleanPhone = phone.replace(/\D/g, '');
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: {
+        whatsappAllowedPhones: true,
+        plan: true
+      }
+    });
+
+    const limit = user.plan?.limite_numeros_whatsapp || user.limite_numeros_whatsapp || 1;
+    const currentCount = (user.whatsapp_phone ? 1 : 0) + user.whatsappAllowedPhones.length;
+
+    if (currentCount >= limit) {
+      return res.status(403).json({ status: 403, message: 'Você atingiu o limite de números de WhatsApp vinculados do seu plano.' });
+    }
+
+    if (user.whatsapp_phone === cleanPhone) {
+      return res.status(400).json({ status: 400, message: 'Este número já é o seu principal.' });
+    }
+
+    const existing = await prisma.whatsappAllowedPhone.findUnique({ where: { phone: cleanPhone } });
+    if (existing) {
+       return res.status(400).json({ status: 400, message: 'Este número já está vinculado a alguma conta.' });
+    }
+
+    const newNumber = await prisma.whatsappAllowedPhone.create({
+      data: {
+        user_id: req.user.id,
+        phone: cleanPhone,
+        name: name || null
+      }
+    });
+
+    res.status(201).json({ success: true, data: newNumber });
+  } catch (error) {
+    res.status(500).json({ status: 500, message: error.message });
+  }
+});
+
+// DELETE /api/auth/whatsapp-numbers/:id
+router.delete('/whatsapp-numbers/:id', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === 'main') {
+       // Remove the main number from User model
+       await prisma.user.update({
+         where: { id: req.user.id },
+         data: { whatsapp_phone: null }
+       });
+       return res.json({ success: true, message: 'Número principal removido.' });
+    }
+
+    const allowedPhone = await prisma.whatsappAllowedPhone.findUnique({ where: { id } });
+    if (!allowedPhone || allowedPhone.user_id !== req.user.id) {
+      return res.status(404).json({ status: 404, message: 'Número não encontrado ou acesso negado.' });
+    }
+
+    await prisma.whatsappAllowedPhone.delete({ where: { id } });
+    res.json({ success: true, message: 'Número extra removido com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ status: 500, message: error.message });
+  }
+});
+
 module.exports = router;

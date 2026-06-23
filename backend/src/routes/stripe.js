@@ -58,7 +58,7 @@ async function sendWelcomeEmail({ email, nome, resetToken, planNome, trialDias }
 
           <p style="color: #9ca3af; font-size: 13px; text-align: center;">
             Este link expira em 24 horas.<br>
-            Dúvidas? Responda este email.
+            Dúvidas? Entre em contato com nosso suporte: <strong>14-3313-7707</strong>
           </p>
         </div>
       `
@@ -105,6 +105,7 @@ router.post('/checkout', authenticateToken, async (req, res) => {
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
+      phone_number_collection: { enabled: true },
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
@@ -141,6 +142,7 @@ router.post('/public-checkout', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     const session = await stripe.checkout.sessions.create({
+      phone_number_collection: { enabled: true },
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
@@ -321,6 +323,8 @@ router.post('/webhooks', express.raw({ type: 'application/json' }), async (req, 
         const stripeCustomer = await stripe.customers.retrieve(session.customer);
         const customerEmail = stripeCustomer.email;
         const customerName = stripeCustomer.name || '';
+        const customerPhone = session.customer_details?.phone || stripeCustomer.phone;
+        const cleanPhone = customerPhone ? customerPhone.replace(/\D/g, '') : null;
 
         let user = null;
         let isNewUser = false;
@@ -372,7 +376,8 @@ router.post('/webhooks', express.raw({ type: 'application/json' }), async (req, 
             delinquent_since: null,
             blocked_at: null,
             disabled: false,
-            is_verified: true
+            is_verified: true,
+            ...(cleanPhone && { whatsapp_phone: cleanPhone })
           }
         });
 
@@ -390,6 +395,17 @@ router.post('/webhooks', express.raw({ type: 'application/json' }), async (req, 
           planNome: plan?.nome || 'Freedom',
           trialDias: plan?.trial_dias || 7
         });
+
+        // 6. Envia WhatsApp de boas-vindas se houver telefone
+        if (cleanPhone) {
+          try {
+            const whatsappService = require('../services/whatsappService');
+            const message = `🎉 Olá${customerName ? ' ' + customerName.split(' ')[0] : ''}! Seja bem-vindo(a) ao *Freedom*!\n\nSeu pagamento foi confirmado com sucesso. Para começar a usar, você precisa criar a sua senha.\n\nEnviamos um link para o seu e-mail (${customerEmail}). Por favor, acesse seu e-mail e clique no link para definir sua senha.\n\nDepois disso, você já pode voltar aqui e enviar suas despesas! Exemplo: "Gastei 50 reais no mercado no débito" 🚀`;
+            await whatsappService.sendTextMessage(`55${cleanPhone.replace(/^55/, '')}`, message, user.id);
+          } catch(e) {
+            console.error('[STRIPE] Falha ao enviar WhatsApp de boas vindas:', e.message);
+          }
+        }
 
         console.log(`[STRIPE] ✅ Assinatura ativada para ${customerEmail} (${isNewUser ? 'novo usuário' : 'usuário existente'})`);
         break;

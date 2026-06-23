@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiClient } from '@/api/apiClient';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
-import { MessageCircle, Phone, User, CheckCircle2, Loader2, Info, Mic, Type } from 'lucide-react';
+import { MessageCircle, Phone, User, CheckCircle2, Loader2, Info, Mic, Type, Plus } from 'lucide-react';
 
 export default function Profile() {
   const { user, checkAppState } = useAuth();
@@ -10,11 +10,30 @@ export default function Profile() {
   const [fullName, setFullName] = useState('');
   const [saving, setSaving] = useState(false);
   const [waNumber, setWaNumber] = useState('');
+  
+  // Extra WhatsApp Numbers state
+  const [numbersData, setNumbersData] = useState(null);
+  const [loadingNumbers, setLoadingNumbers] = useState(false);
+  const [newNumber, setNewNumber] = useState('');
+  const [newName, setNewName] = useState('');
+
+  const fetchNumbers = async () => {
+    setLoadingNumbers(true);
+    try {
+      const data = await apiClient.auth.getWhatsappNumbers();
+      setNumbersData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingNumbers(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
       setWhatsappPhone(user.whatsapp_phone || '');
       setFullName(user.full_name || user.name || '');
+      fetchNumbers();
     }
     // Busca o número de WhatsApp do sistema
     apiClient.auth.getSystemWhatsapp().then(d => setWaNumber(d?.number || '')).catch(() => {});
@@ -38,7 +57,46 @@ export default function Profile() {
     ? `https://wa.me/${waNumber.replace(/\D/g, '')}?text=Ol%C3%A1%2C+Freedom!`
     : null;
 
-  const isLinked = !!user?.whatsapp_phone;
+  const handleAddNumber = async () => {
+    if (!newNumber) {
+      toast.error('O número não pode ficar vazio.');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (!numbersData?.mainNumber && numbersData?.extraNumbers.length === 0) {
+         // Se não tem número principal, salva primeiro como principal por retrocompatibilidade
+         await apiClient.auth.updateProfile({ whatsapp_phone: newNumber });
+         await checkAppState();
+      } else {
+         await apiClient.auth.addWhatsappNumber(newNumber, newName);
+      }
+      toast.success('Número vinculado com sucesso!');
+      setNewNumber('');
+      setNewName('');
+      fetchNumbers();
+    } catch (e) {
+      toast.error(e.message || 'Erro ao vincular número.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveNumber = async (id) => {
+    if (!confirm('Deseja realmente remover este número?')) return;
+    try {
+      await apiClient.auth.deleteWhatsappNumber(id);
+      toast.success('Número removido com sucesso!');
+      if (id === 'main') await checkAppState();
+      fetchNumbers();
+    } catch (e) {
+      toast.error(e.message || 'Erro ao remover número.');
+    }
+  };
+
+  const currentCount = (numbersData?.mainNumber ? 1 : 0) + (numbersData?.extraNumbers?.length || 0);
+  const canAddMore = numbersData ? currentCount < numbersData.limit : false;
+  const isLinked = currentCount > 0;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
@@ -105,31 +163,92 @@ export default function Profile() {
           )}
         </div>
 
-        <div className="mt-5 space-y-3">
-          <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide block">
-            Seu número de WhatsApp
-          </label>
-          <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 bg-slate-50 dark:bg-slate-800">
-            <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              type="tel"
-              value={whatsappPhone}
-              onChange={e => setWhatsappPhone(e.target.value)}
-              placeholder="5511999999999 (com DDD e DDI 55)"
-              className="flex-1 bg-transparent text-sm text-slate-800 dark:text-white outline-none placeholder-slate-400"
-            />
-          </div>
-          <p className="text-xs text-slate-400">Digite apenas números. Exemplo: 5511987654321</p>
+        <div className="mt-5 space-y-4">
+          
+          {/* Lista de Números */}
+          {numbersData && (
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between items-center mb-2">
+                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Números Vinculados</p>
+                 <p className="text-xs text-slate-400 font-medium">{currentCount} / {numbersData.limit} utilizados</p>
+              </div>
+              
+              {numbersData.mainNumber && (
+                <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-3 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <Phone className="w-4 h-4 text-green-600" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 dark:text-white">{numbersData.mainNumber.phone}</p>
+                      <p className="text-xs text-slate-500">Principal</p>
+                    </div>
+                  </div>
+                  <button onClick={() => handleRemoveNumber('main')} className="text-red-500 hover:text-red-600 text-xs font-medium px-2 py-1 bg-red-50 dark:bg-red-500/10 rounded-lg transition-colors">
+                    Remover
+                  </button>
+                </div>
+              )}
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold rounded-xl py-2.5 text-sm flex items-center justify-center gap-2 transition-colors"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-              <><MessageCircle className="w-4 h-4" /> Vincular WhatsApp</>
-            )}
-          </button>
+              {numbersData.extraNumbers.map(n => (
+                <div key={n.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-3 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <Phone className="w-4 h-4 text-green-600" />
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 dark:text-white">{n.phone}</p>
+                      {n.name && <p className="text-xs text-slate-500">{n.name}</p>}
+                    </div>
+                  </div>
+                  <button onClick={() => handleRemoveNumber(n.id)} className="text-red-500 hover:text-red-600 text-xs font-medium px-2 py-1 bg-red-50 dark:bg-red-500/10 rounded-lg transition-colors">
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canAddMore ? (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide block">
+                Vincular novo número de WhatsApp
+              </label>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 bg-slate-50 dark:bg-slate-800 flex-1">
+                  <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="tel"
+                    value={newNumber}
+                    onChange={e => setNewNumber(e.target.value)}
+                    placeholder="Ex: 5511999999999"
+                    className="w-full bg-transparent text-sm text-slate-800 dark:text-white outline-none placeholder-slate-400"
+                  />
+                </div>
+                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 bg-slate-50 dark:bg-slate-800 flex-1">
+                  <User className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    placeholder="De quem é? (Opcional)"
+                    className="w-full bg-transparent text-sm text-slate-800 dark:text-white outline-none placeholder-slate-400"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">Digite apenas números, incluindo o 55. Exemplo: 5511987654321</p>
+
+              <button
+                onClick={handleAddNumber}
+                disabled={saving || loadingNumbers}
+                className="w-full bg-green-600 hover:bg-green-500 text-white font-semibold rounded-xl py-2.5 text-sm flex items-center justify-center gap-2 transition-colors"
+              >
+                {saving || loadingNumbers ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                  <><Plus className="w-4 h-4" /> Adicionar Número</>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-500 text-sm font-medium p-4 rounded-xl text-center">
+              Você já atingiu o limite de {numbersData?.limit} número(s) de WhatsApp para o seu plano.
+            </div>
+          )}
         </div>
 
         {/* Instrucoes */}

@@ -254,7 +254,7 @@ router.get('/plans', async (req, res) => {
 // POST /api/admin/plans — cria plano + produto no Stripe automaticamente
 router.post('/plans', authenticateToken, onlyAdmin, async (req, res) => {
   try {
-    const { nome, descricao, preco_mensal, preco_anual, features, destaque, ordem, limite_familias, trial_dias, badge, cor } = req.body;
+    const { nome, descricao, preco_mensal, preco_anual, features, destaque, ordem, limite_familias, limite_numeros_whatsapp, trial_dias, badge, cor } = req.body;
 
     // 1. Cria produto no Stripe
     const product = await stripe.products.create({
@@ -297,6 +297,7 @@ router.post('/plans', authenticateToken, onlyAdmin, async (req, res) => {
         destaque: destaque || false,
         ordem: ordem || 0,
         limite_familias: limite_familias || 1,
+        limite_numeros_whatsapp: limite_numeros_whatsapp || 1,
         trial_dias: trial_dias || 7,
         badge: badge || null,
         cor: cor || null,
@@ -317,7 +318,7 @@ router.post('/plans', authenticateToken, onlyAdmin, async (req, res) => {
 // PUT /api/admin/plans/:id
 router.put('/plans/:id', authenticateToken, onlyAdmin, async (req, res) => {
   try {
-    const { nome, descricao, preco_mensal, preco_anual, features, destaque, ordem, ativo, limite_familias, trial_dias, badge, cor } = req.body;
+    const { nome, descricao, preco_mensal, preco_anual, features, destaque, ordem, ativo, limite_familias, limite_numeros_whatsapp, trial_dias, badge, cor } = req.body;
 
     const existing = await prisma.plan.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ message: 'Plano não encontrado' });
@@ -343,6 +344,7 @@ router.put('/plans/:id', authenticateToken, onlyAdmin, async (req, res) => {
         ordem: ordem ?? existing.ordem,
         ativo: ativo ?? existing.ativo,
         limite_familias: limite_familias ?? existing.limite_familias,
+        limite_numeros_whatsapp: limite_numeros_whatsapp ?? existing.limite_numeros_whatsapp,
         trial_dias: trial_dias ?? existing.trial_dias,
         badge: badge ?? existing.badge,
         cor: cor ?? existing.cor

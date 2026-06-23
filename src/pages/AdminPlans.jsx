@@ -32,6 +32,7 @@ const emptyPlan = () => ({
   upsell_price_id: '',
   payment_link: '',
   limite_familias: 1,
+  limite_numeros_whatsapp: 1,
   cor: '#10B981',
   ordem: 0,
   ativo: true,
@@ -99,6 +100,7 @@ export default function AdminPlans() {
       upsell_price_id: plan.upsell_price_id || '',
       payment_link: plan.payment_link || '',
       limite_familias: plan.limite_familias || 1,
+      limite_numeros_whatsapp: plan.limite_numeros_whatsapp || 1,
       cor: plan.cor || '#10B981',
       ordem: plan.ordem || 0,
       ativo: plan.ativo !== false,
@@ -118,6 +120,7 @@ export default function AdminPlans() {
         preco_original: parseFloat(form.preco_original) || null,
         ordem: parseInt(form.ordem) || 0,
         limite_familias: parseInt(form.limite_familias) || 1,
+        limite_numeros_whatsapp: parseInt(form.limite_numeros_whatsapp) || 1,
       },
       id: editing,
     });
@@ -210,6 +213,12 @@ export default function AdminPlans() {
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Limite de Famílias</label>
               <Input type="number" min="1" value={form.limite_familias} onChange={e => f({ limite_familias: e.target.value })} />
+            </div>
+
+            {/* Limite WhatsApp */}
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1 block">Qtd. Números WhatsApp</label>
+              <Input type="number" min="1" value={form.limite_numeros_whatsapp} onChange={e => f({ limite_numeros_whatsapp: e.target.value })} />
             </div>
 
             {/* Badge */}

@@ -17,7 +17,7 @@ const TIPOS = [
   { value: 'UNICO', label: '💳 Pagamento Único' },
 ];
 const CORES = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#F97316'];
-const emptyPlan = () => ({ nome: '', descricao: '', tipo: 'MENSAL', preco: '', preco_original: '', features: '', destaque: false, badge: '', upsell_texto: '', upsell_price_id: '', limite_familias: 1, cor: '#10B981', ordem: 0, ativo: true });
+const emptyPlan = () => ({ nome: '', descricao: '', tipo: 'MENSAL', preco: '', preco_original: '', features: '', destaque: false, badge: '', upsell_texto: '', upsell_price_id: '', limite_familias: 1, limite_numeros_whatsapp: 1, cor: '#10B981', ordem: 0, ativo: true });
 
 export default function AdminPlansManager() {
   const queryClient = useQueryClient();
@@ -59,6 +59,7 @@ export default function AdminPlansManager() {
       features: plan.features || '', destaque: plan.destaque || false,
       badge: plan.badge || '', upsell_texto: plan.upsell_texto || '',
       upsell_price_id: plan.upsell_price_id || '', limite_familias: plan.limite_familias || 1,
+      limite_numeros_whatsapp: plan.limite_numeros_whatsapp || 1,
       cor: plan.cor || '#10B981', ordem: plan.ordem || 0, ativo: plan.ativo !== false,
     });
   };
@@ -66,7 +67,7 @@ export default function AdminPlansManager() {
     e.preventDefault();
     if (!form.nome || !form.preco) { toast.error('Nome e preço são obrigatórios'); return; }
     saveMutation.mutate({
-      data: { ...form, preco: parseFloat(form.preco) || 0, preco_original: parseFloat(form.preco_original) || null, ordem: parseInt(form.ordem) || 0, limite_familias: parseInt(form.limite_familias) || 1 },
+      data: { ...form, preco: parseFloat(form.preco) || 0, preco_original: parseFloat(form.preco_original) || null, ordem: parseInt(form.ordem) || 0, limite_familias: parseInt(form.limite_familias) || 1, limite_numeros_whatsapp: parseInt(form.limite_numeros_whatsapp) || 1 },
       id: editing,
     });
   };
@@ -127,6 +128,10 @@ export default function AdminPlansManager() {
             <div>
               <Label>Limite de Famílias</Label>
               <Input type="number" min="1" value={form.limite_familias} onChange={e => f({ limite_familias: e.target.value })} className="bg-slate-800 border-slate-700 text-white" />
+            </div>
+            <div>
+              <Label>Qtd. Números WhatsApp</Label>
+              <Input type="number" min="1" value={form.limite_numeros_whatsapp} onChange={e => f({ limite_numeros_whatsapp: e.target.value })} className="bg-slate-800 border-slate-700 text-white" />
             </div>
             <div>
               <Label>Badge do Card</Label>
@@ -206,6 +211,7 @@ export default function AdminPlansManager() {
                     {plan.preco_original && <span className="text-slate-600 text-sm line-through">R$ {plan.preco_original}</span>}
                     <span className="text-2xl font-black text-white">R$ {plan.preco}<span className="text-sm font-normal text-slate-400 ml-1">{plan.tipo === 'MENSAL' ? '/mês' : plan.tipo === 'ANUAL' ? '/ano' : ''}</span></span>
                     <span className="text-slate-500 text-xs">· {plan.limite_familias || 1} família{(plan.limite_familias || 1) > 1 ? 's' : ''}</span>
+                    <span className="text-slate-500 text-xs">· {plan.limite_numeros_whatsapp || 1} WhatsApp</span>
                   </div>
                   <div className="flex flex-wrap gap-x-4 text-xs text-slate-500">{features.map(f => <span key={f}>✓ {f.trim()}</span>)}{plan.features && plan.features.split(',').length > 3 && <span className="text-slate-600">+{plan.features.split(',').length - 3} mais</span>}</div>
                   {plan.stripe_price_id ? <p className="text-xs text-emerald-600 mt-1 font-mono">✓ {plan.stripe_price_id}</p> : <p className="text-xs text-amber-500 mt-1">⚠ Não sincronizado com Stripe</p>}

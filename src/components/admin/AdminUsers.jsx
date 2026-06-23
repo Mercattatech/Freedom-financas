@@ -28,7 +28,7 @@ const ORIGEM_CONFIG = {
 const emptyForm = () => ({
   user_email: '', user_name: '', plan_id: '', plan_nome: '',
   status: 'ATIVO', data_inicio: new Date().toISOString().split('T')[0],
-  data_expiracao: '', limite_familias: 1, observacoes: '', origem: 'MANUAL',
+  data_expiracao: '', limite_familias: 1, limite_numeros_whatsapp: 1, observacoes: '', origem: 'MANUAL',
   stripe_subscription_id: '', stripe_customer_id: '',
 });
 
@@ -77,6 +77,7 @@ export default function AdminUsers() {
       plan_id: a.plan_id || '', plan_nome: a.plan_nome || '',
       status: a.status || 'ATIVO', data_inicio: a.data_inicio || '',
       data_expiracao: a.data_expiracao || '', limite_familias: a.limite_familias || 1,
+      limite_numeros_whatsapp: a.limite_numeros_whatsapp || 1,
       observacoes: a.observacoes || '', origem: a.origem || 'MANUAL',
       stripe_subscription_id: a.stripe_subscription_id || '',
       stripe_customer_id: a.stripe_customer_id || '',
@@ -92,6 +93,7 @@ export default function AdminUsers() {
         ...form,
         plan_nome: planSel?.nome || form.plan_nome,
         limite_familias: parseInt(form.limite_familias) || 1,
+        limite_numeros_whatsapp: parseInt(form.limite_numeros_whatsapp) || 1,
       },
       id: editing,
     });
@@ -225,6 +227,11 @@ export default function AdminUsers() {
             </div>
 
             <div>
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">Qtd. Números WhatsApp</label>
+              <Input type="number" min="1" value={form.limite_numeros_whatsapp} onChange={e => f({ limite_numeros_whatsapp: e.target.value })} className="bg-slate-800 border-slate-700 text-white" />
+            </div>
+
+            <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">Data de Início</label>
               <Input type="date" value={form.data_inicio} onChange={e => f({ data_inicio: e.target.value })} className="bg-slate-800 border-slate-700 text-white" />
             </div>
@@ -328,6 +335,7 @@ export default function AdminUsers() {
                     {plan && <span className="flex items-center gap-1 text-emerald-400">💎 {plan.nome}</span>}
                     <span>{origemCfg.icon} {origemCfg.label}</span>
                     <span>👨‍👩‍👧 {a.limite_familias || 1} família{(a.limite_familias || 1) > 1 ? 's' : ''}</span>
+                    <span>📱 {a.limite_numeros_whatsapp || 1} WhatsApp</span>
                     {a.data_inicio && <span>📅 Desde {a.data_inicio}</span>}
                     {a.data_expiracao && <span className={isExpired ? 'text-red-400' : ''}>⏰ Até {a.data_expiracao}</span>}
                   </div>

@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS "User" (
   "role" TEXT DEFAULT 'user',
   "otpCode" TEXT,
   "must_change_password" BOOLEAN DEFAULT false,
+  "limite_numeros_whatsapp" INTEGER DEFAULT 1,
   "created_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   "updated_date" TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -243,6 +244,7 @@ CREATE TABLE IF NOT EXISTS "UserAccess" (
   "data_inicio" TEXT,
   "data_expiracao" TEXT,
   "limite_familias" INTEGER DEFAULT 1,
+  "limite_numeros_whatsapp" INTEGER DEFAULT 1,
   "observacoes" TEXT,
   "origem" TEXT DEFAULT 'MANUAL',
   "stripe_subscription_id" TEXT,
@@ -264,6 +266,7 @@ CREATE TABLE IF NOT EXISTS "Plan" (
   "upsell_texto" TEXT,
   "upsell_price_id" TEXT,
   "limite_familias" INTEGER DEFAULT 1,
+  "limite_numeros_whatsapp" INTEGER DEFAULT 1,
   "cor" TEXT,
   "ordem" INTEGER DEFAULT 0,
   "ativo" BOOLEAN DEFAULT true,

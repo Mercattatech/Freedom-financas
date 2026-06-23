@@ -109,6 +109,20 @@ export const apiClient = {
     async getSystemWhatsapp() {
       return await apiFetch('/auth/whatsapp-number');
     },
+    async getWhatsappNumbers() {
+      return await apiFetch('/auth/whatsapp-numbers');
+    },
+    async addWhatsappNumber(phone, name) {
+      return await apiFetch('/auth/whatsapp-numbers', {
+        method: 'POST',
+        body: JSON.stringify({ phone, name })
+      });
+    },
+    async deleteWhatsappNumber(id) {
+      return await apiFetch(`/auth/whatsapp-numbers/${id}`, {
+        method: 'DELETE'
+      });
+    },
     async me() {
       try {
         return await apiFetch('/auth/me');

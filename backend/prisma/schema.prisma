@@ -38,6 +38,7 @@ model User {
   // ── WhatsApp ──
   whatsapp_phone              String?   @unique
   whatsapp_default_family_id  String?   // Família padrão para lançamentos via WhatsApp
+  limite_numeros_whatsapp     Int       @default(1)
 
   // Relations
   families     Family[] @relation("FamilyCreator")
@@ -363,6 +364,7 @@ model UserAccess {
   data_inicio            String?
   data_expiracao         String?
   limite_familias        Int      @default(1)
+  limite_numeros_whatsapp Int     @default(1)
   observacoes            String?
   origem                 String   @default("MANUAL")
   stripe_subscription_id String?
@@ -385,6 +387,7 @@ model Plan {
   badge                    String?
   upsell_texto             String?
   limite_familias          Int      @default(1)
+  limite_numeros_whatsapp  Int      @default(1)
   cor                      String?
   ordem                    Int      @default(0)
   ativo                    Boolean  @default(true)
