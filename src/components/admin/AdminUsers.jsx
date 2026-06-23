@@ -160,18 +160,29 @@ export default function AdminUsers() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">Email do Usuário *</label>
+              <datalist id="registered-users">
+                {appUsers.map(u => (
+                  <option key={u.email} value={u.email}>{u.full_name || 'Sem Nome'}</option>
+                ))}
+              </datalist>
               <Input
                 placeholder="email@exemplo.com"
                 value={form.user_email}
-                onChange={e => f({ user_email: e.target.value })}
+                onChange={e => {
+                  const email = e.target.value;
+                  const matchedUser = appUsers.find(u => u.email === email);
+                  f({ 
+                    user_email: email, 
+                    ...(matchedUser && !form.user_name ? { user_name: matchedUser.full_name } : {})
+                  });
+                }}
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                list="registered-users"
                 required
               />
-              {appUsers.length > 0 && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Usuários cadastrados: {appUsers.map(u => u.email).join(', ')}
-                </p>
-              )}
+              <p className="text-xs text-slate-500 mt-1">
+                Dica: Digite para buscar e preencher automaticamente os dados de clientes já cadastrados.
+              </p>
             </div>
             <div>
               <label className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1 block">Nome</label>
