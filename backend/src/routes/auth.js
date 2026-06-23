@@ -4,8 +4,11 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { authenticateToken } = require('../middleware/auth');
+const { Resend } = require('resend');
 
 const prisma = new PrismaClient();
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Freedom App <onboarding@resend.dev>';
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -35,6 +38,29 @@ router.post('/register', async (req, res) => {
 
     // In a real app we would send the email here.
     console.log(`[AUTH SERVER] Registrando ${email}... OTP CÓDIGO gerado: ${otpCode}`);
+
+    if (process.env.RESEND_API_KEY) {
+      try {
+        await resend.emails.send({
+          from: FROM_EMAIL,
+          to: email,
+          subject: 'Código de Verificação - Freedom App',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+              <h2 style="color: #0f172a;">Bem-vindo ao Freedom!</h2>
+              <p style="color: #475569; font-size: 16px;">Para concluir seu cadastro, utilize o código de verificação abaixo:</p>
+              <div style="margin: 30px 0; text-align: center;">
+                <span style="background-color: #f1f5f9; color: #10b981; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 32px; letter-spacing: 4px;">${otpCode}</span>
+              </div>
+              <p style="color: #94a3b8; font-size: 14px;">Se você não solicitou este cadastro, pode ignorar este e-mail.</p>
+            </div>
+          `
+        });
+        console.log(`✅ OTP enviado com sucesso para ${email}`);
+      } catch (err) {
+        console.error('❌ Erro ao enviar OTP via Resend:', err.message);
+      }
+    }
 
     res.status(201).json({ 
       status: 201, 
@@ -171,6 +197,29 @@ router.post('/resend-otp', async (req, res) => {
 
     console.log(`[AUTH SERVER] Reenviando OTP para ${email}... NOVO CÓDIGO: ${newOtp}`);
 
+    if (process.env.RESEND_API_KEY) {
+      try {
+        await resend.emails.send({
+          from: FROM_EMAIL,
+          to: email,
+          subject: 'Seu novo código de Verificação - Freedom App',
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px;">
+              <h2 style="color: #0f172a;">Código de Verificação</h2>
+              <p style="color: #475569; font-size: 16px;">Você solicitou um novo código. Utilize o código abaixo para validar seu e-mail:</p>
+              <div style="margin: 30px 0; text-align: center;">
+                <span style="background-color: #f1f5f9; color: #10b981; padding: 16px 32px; border-radius: 8px; font-weight: bold; font-size: 32px; letter-spacing: 4px;">${newOtp}</span>
+              </div>
+              <p style="color: #94a3b8; font-size: 14px;">Se você não solicitou, por favor, altere sua senha por segurança.</p>
+            </div>
+          `
+        });
+        console.log(`✅ Novo OTP enviado com sucesso para ${email}`);
+      } catch (err) {
+        console.error('❌ Erro ao reenviar OTP via Resend:', err.message);
+      }
+    }
+
     res.json({ success: true, _dev_otp: newOtp });
   } catch (error) {
     res.status(500).json({ status: 500, message: error.message });
@@ -206,12 +255,8 @@ router.post('/forgot-password', async (req, res) => {
 
     if (process.env.RESEND_API_KEY) {
       try {
-        const { Resend } = require('resend');
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        const fromEmail = process.env.RESEND_FROM_EMAIL || 'Freedom App <onboarding@resend.dev>';
-        
         await resend.emails.send({
-          from: fromEmail,
+          from: FROM_EMAIL,
           to: email,
           subject: 'Recuperação de Senha - Freedom App',
           html: `
