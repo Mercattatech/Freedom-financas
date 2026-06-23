@@ -495,6 +495,11 @@ async function handleIntent(aiResult, user, phone, session, family) {
     return await handleListExpensesRequest(user, family, data.date, phone, session);
   }
 
+  // Se for agendamento
+  if (intent === 'schedule_event') {
+    return await handleScheduleEventRequest(data, phone);
+  }
+
   // Se for edição e estiver faltando o índice
   if (intent === 'update_expense' && (!data.item_index || !session?.extracted_data?.listed_items)) {
     return await whatsappService.sendTextMessage(phone, "Por favor, liste os lançamentos primeiro (ex: 'liste os de hoje') e depois diga qual número quer alterar.");
@@ -812,6 +817,14 @@ async function handleReportRequest(user, family, period, phone) {
       if (dayTotalIncome > 0) {
         msg += `🟢 *Receitas de Hoje:* ${formatter.format(dayTotalIncome)}\n`;
       }
+
+      if (dayExpenses.length > 0) {
+        msg += `\n📋 *Lançamentos de Hoje:*\n`;
+        dayExpenses.forEach(exp => {
+          msg += `- ${exp.descricao} (${formatter.format(exp.valor)})\n`;
+        });
+      }
+
       msg += `\n💵 *Saldo Atualizado (Mês):* ${formatter.format(balance)}`;
 
       await whatsappService.sendTextMessage(phone, msg);
@@ -896,6 +909,48 @@ async function handleListExpensesRequest(user, family, dateParam, phone, session
   } catch (err) {
     console.error('Error listing expenses:', err);
     await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao listar os lançamentos.");
+  }
+}
+
+async function handleScheduleEventRequest(data, phone) {
+  try {
+    const title = encodeURIComponent(data.title || 'Compromisso');
+    const details = encodeURIComponent(data.details || '');
+    const startTime = data.start_time || new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    const endTime = data.end_time || startTime;
+
+    const googleLink = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startTime}/${endTime}&details=${details}`;
+    
+    // O iOS e o MacOS interpretam datas nativamente no WhatsApp, então podemos exibir os horários legíveis para o usuário clicar.
+    // Mas também vamos enviar o link direto para o Google Calendar.
+    
+    // Tentar formatar a data de start_time (que vem no formato YYYYMMDDTHHmmssZ)
+    let dataLegivel = startTime;
+    if (startTime.length >= 15) {
+      const year = startTime.substring(0, 4);
+      const month = startTime.substring(4, 6);
+      const day = startTime.substring(6, 8);
+      const hour = startTime.substring(9, 11);
+      const min = startTime.substring(11, 13);
+      dataLegivel = `${day}/${month}/${year} às ${hour}:${min}`;
+    }
+
+    let msg = `📅 *Agendamento Criado!*\n\n`;
+    msg += `📌 *${data.title}*\n`;
+    msg += `⏰ *Quando:* ${dataLegivel}\n`;
+    if (data.details) {
+      msg += `📝 *Detalhes:* ${data.details}\n`;
+    }
+    msg += `\n*Para salvar na sua agenda, escolha uma das opções:*`;
+    msg += `\n\n🍎 *Usuários Apple:*`;
+    msg += `\nToque diretamente na data acima (${dataLegivel}) para adicionar ao calendário do iPhone/Mac.`;
+    msg += `\n\n🌐 *Usuários Google / Android:*`;
+    msg += `\n[Clique aqui para abrir no Google Calendar](${googleLink})`;
+
+    await whatsappService.sendTextMessage(phone, msg);
+  } catch (error) {
+    console.error('Error scheduling event:', error);
+    await whatsappService.sendTextMessage(phone, "Ocorreu um erro ao tentar gerar os links de agendamento.");
   }
 }
 

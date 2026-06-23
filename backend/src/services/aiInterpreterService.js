@@ -94,21 +94,30 @@ create_income (receita, salário, entrada):
 generate_report (relatório, resumo, fechamento do mês, extrato, relatório do dia):
   OBRIGATÓRIO: period (período solicitado)
   Formatos de period permitidos: "YYYY-MM-DD" (para um dia específico) ou "YYYY-MM" (para um mês inteiro).
+  ⚠️ IMPORTANTE: CALCULE a data real e retorne no formato numérico YYYY-MM-DD ou YYYY-MM.
   Se o usuário disser "hoje" ou "de hoje", retorne "${currentDate}".
+  Se o usuário disser "ontem", subtraia 1 dia e retorne (ex: "2026-06-21").
   Se o usuário disser "este mês", "desse mês", retorne "${currentDate.substring(0, 7)}".
   Se pedir do mês passado, subtraia 1 mês e retorne no formato YYYY-MM.
-  Se disser algo sem data clara, assuma "${currentDate}".
+  NUNCA RETORNE PALAVRAS como "ontem", "hoje", "mês passado". SEMPRE use o formato numérico.
   needs_confirmation deve ser FALSE para relatórios.
 
 list_expenses (listar lançamentos, listar gastos):
-  OBRIGATÓRIO: date (data para listar, ex: "hoje", "ontem", "do dia 15")
-  Formato de date: "YYYY-MM-DD". Se não especificar, use "${currentDate}".
+  OBRIGATÓRIO: date (data para listar)
+  Formato de date: "YYYY-MM-DD". CALCULE a data exata. Se não especificar, use "${currentDate}".
+  NUNCA retorne palavras como "ontem". Calcule a data.
   needs_confirmation deve ser FALSE para listagens.
 
 update_expense (alterar lançamento, trocar valor, mudar para pix):
   OBRIGATÓRIO: item_index (o número/ID do item na lista que o usuário quer alterar)
   OPCIONAL: amount (novo valor), payment_method (nova forma), credit_card (novo cartão), category (nova categoria)
   needs_confirmation deve ser TRUE.
+
+schedule_event (agendar, marcar compromisso, lembrar, calendário):
+  OBRIGATÓRIO: title (título do compromisso), start_time (data e hora de início no formato YYYYMMDDTHHmmssZ)
+  OPCIONAL: end_time (data e hora de término no formato YYYYMMDDTHHmmssZ, se não informado assuma 1 hora após o início), details (detalhes opcionais)
+  CALCULE as datas baseando-se no dia atual ${currentDate}.
+  needs_confirmation deve ser FALSE para agendamentos.
 
 help (ajuda, me ajude, o que você faz, comandos, como funciona):
   needs_confirmation deve ser FALSE para ajuda.
@@ -126,7 +135,7 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 
 ==== FORMATO DE SAÍDA ====
 {
-  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | help | confirm_action | reject_action | unknown",
+  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | schedule_event | help | confirm_action | reject_action | unknown",
   "confidence": 0.95,
   "data": {
     "amount": 100,
@@ -137,7 +146,11 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
     "credit_card": null,
     "installments": null,
     "period": null,
-    "item_index": null
+    "item_index": null,
+    "title": null,
+    "start_time": null,
+    "end_time": null,
+    "details": null
   },
   "missing_fields": [],
   "needs_confirmation": true,
