@@ -119,6 +119,17 @@ schedule_event (agendar, marcar compromisso, lembrar, calendário):
   CALCULE as datas baseando-se no dia atual ${currentDate}.
   needs_confirmation deve ser FALSE para agendamentos.
 
+general_chat (perguntas gerais, bater papo, dúvidas, dicas, previsão do tempo, futebol, receitas, filmes, investimentos):
+  OBRIGATÓRIO: chat_response (Sua resposta completa e amigável em texto)
+  REGRAS DE RESPOSTA GERAL:
+  - Melhor ação/investimento: Liste as 10 melhores e dê um breve contexto.
+  - Previsão do tempo: Simule ou traga a previsão para a SEMANA da cidade solicitada.
+  - Filmes: Dê uma lista categorizada (família, namorados, amigos).
+  - Futebol mundial: Responda com precisão, incluindo data do jogo e onde assistir.
+  - Receitas/Almoço: Monte uma receita fitness incrível e passo-a-passo.
+  - Outros assuntos: Responda como um assistente super inteligente.
+  needs_confirmation deve ser FALSE.
+
 help (ajuda, me ajude, o que você faz, comandos, como funciona):
   needs_confirmation deve ser FALSE para ajuda.
 
@@ -135,7 +146,7 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
 
 ==== FORMATO DE SAÍDA ====
 {
-  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | schedule_event | help | confirm_action | reject_action | unknown",
+  "intent": "create_expense | create_income | create_credit_card_expense | generate_report | list_expenses | update_expense | schedule_event | general_chat | help | confirm_action | reject_action | unknown",
   "confidence": 0.95,
   "data": {
     "amount": 100,
@@ -150,7 +161,8 @@ Sessão anterior: ${lastSession ? JSON.stringify(lastSession) : 'nenhuma'}
     "title": null,
     "start_time": null,
     "end_time": null,
-    "details": null
+    "details": null,
+    "chat_response": null
   },
   "missing_fields": [],
   "needs_confirmation": true,

@@ -124,6 +124,23 @@ router.post('/', async (req, res) => {
       }
     });
 
+    // Verificar se é a primeira mensagem do usuário na plataforma
+    const previousMessagesCount = await prisma.whatsappMessage.count({
+      where: { phone: phone, direction: 'incoming' }
+    });
+
+    if (previousMessagesCount === 1) { // 1 pois acabou de registrar a atual acima
+      const welcomeMsg = `👋 *Olá! Seja bem-vindo(a) ao seu assistente da Freedom!* \n\n` +
+        `Estou aqui para organizar sua vida financeira e te ajudar no dia a dia. Veja o que você pode me pedir:\n\n` +
+        `💸 *Lançamentos:* "Gastei 50 no mercado no pix", "Recebi 3000 de salário"\n` +
+        `📊 *Relatórios e Listagens:* "Resumo de hoje", "Liste os gastos de ontem"\n` +
+        `✏️ *Editar:* (Após listar) "Altere o lançamento 1 para boleto"\n` +
+        `📅 *Agendamentos:* "Marque uma reunião amanhã às 15h"\n` +
+        `💬 *E muito mais:* Receitas fitness, dicas de filmes, clima, ações e futebol!\n\n` +
+        `Você pode me mandar texto, áudio ou até foto de comprovantes! Como posso te ajudar hoje?`;
+      await whatsappService.sendTextMessage(phone, welcomeMsg);
+    }
+
     // 4. Buscar ou Criar Sessão Ativa (expira em 30 min)
     let session = await prisma.whatsappSession.findFirst({
       where: {
@@ -493,6 +510,11 @@ async function handleIntent(aiResult, user, phone, session, family) {
   // Se for listagem de gastos
   if (intent === 'list_expenses') {
     return await handleListExpensesRequest(user, family, data.date, phone, session);
+  }
+
+  // Se for chat geral (dicas, clima, filmes, esportes)
+  if (intent === 'general_chat' && data.chat_response) {
+    return await whatsappService.sendTextMessage(phone, data.chat_response);
   }
 
   // Se for agendamento
