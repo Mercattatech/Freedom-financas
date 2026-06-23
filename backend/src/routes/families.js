@@ -11,11 +11,8 @@ router.use(authenticateToken);
 // GET /api/families
 router.get('/', async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
     const families = await prisma.family.findMany({
-      where: isAdmin ? undefined : { 
-        created_by: req.user.email 
-      }
+      where: { created_by: req.user.email }
     });
     res.json(families);
   } catch (error) {

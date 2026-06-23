@@ -11,7 +11,7 @@ export default function AdminFamilies() {
 
   const { data: families = [], isLoading } = useQuery({
     queryKey: ['admin-families'],
-    queryFn: () => apiClient.entities.Family.list('-created_date', 500),
+    queryFn: () => apiClient.get('/admin/families'),
   });
 
   const filtered = families.filter(f => 

@@ -105,11 +105,11 @@ export default function Layout({ children, currentPageName }) {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <Link to={createPageUrl('Dashboard')} className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
-                  <span className="text-white font-bold text-xl">F</span>
+                <div className="w-10 h-10 flex items-center justify-center">
+                  <img src="/logo-free.png" alt="Freedom Logo" className="w-full h-full object-contain" />
                 </div>
                 <div className="hidden sm:block">
-                  <h1 className="text-xl font-bold text-slate-900">Freedom</h1>
+                  <h1 className="text-xl font-bold text-slate-900 dark:text-white">Freedom</h1>
                   <p className="text-xs text-slate-500">Gestão Financeira</p>
                 </div>
               </Link>

@@ -60,6 +60,21 @@ router.get('/stats', authenticateToken, onlyAdmin, async (req, res) => {
 });
 
 // ────────────────────────────────────────────
+// GET /api/admin/families
+// Lista todas as famílias do sistema
+// ────────────────────────────────────────────
+router.get('/families', authenticateToken, onlyAdmin, async (req, res) => {
+  try {
+    const families = await prisma.family.findMany({
+      orderBy: { created_date: 'desc' }
+    });
+    res.json(families);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ────────────────────────────────────────────
 // GET /api/admin/subscribers
 // Lista todos os assinantes com filtros
 // ────────────────────────────────────────────
