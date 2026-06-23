@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { useAuth } from '@/lib/AuthContext';
-import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff, Bell } from 'lucide-react';
+import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff, Bell, User } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -224,24 +224,31 @@ export default function Layout({ children, currentPageName }) {
               </Link>
 
               {user && (
-                <Link to={createPageUrl('Profile')} className="hidden sm:flex items-center gap-3 hover:opacity-80 transition-opacity" title="Meu Perfil">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-slate-800 dark:text-white">{user.name || user.email?.split('@')[0]}</p>
-                    <p className="text-xs text-slate-400">{user.email}</p>
-                  </div>
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
-                    {(user.name || user.email)?.[0]?.toUpperCase()}
-                  </div>
-                </Link>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="hidden sm:flex items-center gap-3 hover:opacity-80 transition-opacity text-left">
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-slate-800 dark:text-white">{user.name || user.email?.split('@')[0]}</p>
+                        <p className="text-xs text-slate-400">{user.email}</p>
+                      </div>
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm">
+                        {(user.name || user.email)?.[0]?.toUpperCase()}
+                      </div>
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2 mr-4 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800" align="end">
+                    <Link to={createPageUrl('Profile')} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 transition-colors">
+                      <User className="w-4 h-4" />
+                      Meu Perfil
+                    </Link>
+                    <div className="h-px bg-slate-100 dark:bg-slate-800 my-1"></div>
+                    <button onClick={() => logout()} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-sm text-red-600 dark:text-red-400 transition-colors">
+                      <LogOut className="w-4 h-4" />
+                      Sair
+                    </button>
+                  </PopoverContent>
+                </Popover>
               )}
-
-              <button
-                onClick={() => logout()}
-                className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
-                title="Sair"
-              >
-                <LogOut className="w-5 h-5" />
-              </button>
               
               {/* Mobile menu toggle */}
               <button
