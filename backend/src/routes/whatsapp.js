@@ -496,14 +496,24 @@ async function handleIntent(aiResult, user, phone, session, family) {
 
   // Se for ajuda
   if (intent === 'help') {
-    const helpMsg = `🤖 *Como posso ajudar?*\n\n` +
-      `Posso te ajudar a organizar suas finanças! Veja o que você pode me pedir:\n\n` +
-      `💸 *Despesas:* "Gastei 50 no mercado no pix", "Comprei um lanche por 30 no cartão"\n` +
-      `💰 *Receitas:* "Recebi 3000 de salário"\n` +
-      `📋 *Listar:* "Liste os lançamentos de hoje" ou "Liste os gastos de ontem"\n` +
-      `✏️ *Editar:* (Após listar) "Altere o lançamento 1 para boleto"\n` +
-      `📊 *Relatórios:* "Mande o relatório desse mês" ou "Resumo de hoje"\n\n` +
-      `Pode mandar texto, áudio ou foto de comprovante!`;
+    const helpMsg = `🤖 *Como posso te ajudar hoje?*\n\n` +
+      `Eu sou o seu **Assistente Freedom**, e faço muito mais do que organizar suas finanças! Veja tudo que posso fazer:\n\n` +
+      `🏦 *1. GESTÃO FINANCEIRA:*\n` +
+      `💸 Lançamentos: *"Gastei 50 no mercado no pix"*, *"Comprei um lanche por 30 no cartão"*\n` +
+      `💰 Receitas: *"Recebi 3000 de salário"*\n` +
+      `📋 Listar e Editar: *"Liste os gastos de hoje"* e depois *"Altere o lançamento 1 para boleto"*\n` +
+      `📊 Relatórios: *"Mande o relatório do mês"* ou *"Resumo de hoje"*\n\n` +
+      `📅 *2. AGENDAMENTOS E LEMBRETES:*\n` +
+      `⏰ *"Marque uma reunião amanhã às 15h"*\n` +
+      `🗓️ *"Me lembre do dentista dia 20 às 10h"*\n\n` +
+      `💬 *3. ASSISTENTE PESSOAL (Bate-papo):*\n` +
+      `📈 *Investimentos:* *"Quais as 10 melhores ações para investir?"*\n` +
+      `⛅ *Clima:* *"Qual a previsão do tempo para São Paulo nesta semana?"*\n` +
+      `🍿 *Filmes:* *"Me dê uma lista de filmes para assistir com a família"*\n` +
+      `⚽ *Esportes:* *"Qual o resultado do jogo do Real Madrid e onde assistir o próximo?"*\n` +
+      `🍳 *Receitas:* *"Monte uma receita fitness incrível para o almoço"*\n` +
+      `🤖 *Bate-papo livre:* Pode me perguntar qualquer coisa que eu te ajudo!\n\n` +
+      `🎙️ *Dica:* Você pode me mandar tudo isso por **texto, áudio ou foto de comprovante**!`;
     return await whatsappService.sendTextMessage(phone, helpMsg);
   }
 
