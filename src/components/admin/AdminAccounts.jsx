@@ -15,7 +15,7 @@ export default function AdminAccounts() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState({ role: 'user', disabled: false, newPassword: '' });
+  const [editForm, setEditForm] = useState({ role: 'user', disabled: false, newPassword: '', limite_numeros_whatsapp: 1 });
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['app-users'],
@@ -25,7 +25,11 @@ export default function AdminAccounts() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }) => {
       // Clean up the data, only send password if provided
-      const payload = { role: data.role, disabled: data.disabled };
+      const payload = { 
+        role: data.role, 
+        disabled: data.disabled,
+        limite_numeros_whatsapp: parseInt(data.limite_numeros_whatsapp) || 1
+      };
       if (data.newPassword.trim().length > 0) {
         payload.password = data.newPassword.trim();
       }
@@ -56,7 +60,8 @@ export default function AdminAccounts() {
     setEditForm({
       role: user.role,
       disabled: user.disabled || false,
-      newPassword: ''
+      newPassword: '',
+      limite_numeros_whatsapp: user.limite_numeros_whatsapp || 1
     });
   };
 
@@ -193,6 +198,20 @@ export default function AdminAccounts() {
                 {editForm.disabled && (
                   <p className="text-xs text-red-400 flex items-center mt-1"><AlertCircle className="w-3 h-3 mr-1"/>O usuário não conseguirá mais entrar na plataforma.</p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-300 mb-1 block">Limite de WhatsApps</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editForm.limite_numeros_whatsapp}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, limite_numeros_whatsapp: e.target.value }))}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+                <p className="text-xs text-emerald-400 flex items-center mt-1">
+                  Quantidade de números de WhatsApp que o cliente pode vincular.
+                </p>
               </div>
 
               <div className="pt-2 border-t border-slate-800 space-y-2">
