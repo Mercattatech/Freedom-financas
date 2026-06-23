@@ -4,20 +4,9 @@ import { apiClient } from '@/api/apiClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users } from "lucide-react";
 
-export default function FamilySelector() {
+export default function FamilySelector({ families = [] }) {
   const queryClient = useQueryClient();
   
-  const { data: user } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => apiClient.auth.me()
-  });
-
-  const { data: families = [] } = useQuery({
-    queryKey: ['families', user?.email],
-    queryFn: () => apiClient.entities.Family.filter({ created_by: user.email }),
-    enabled: !!user
-  });
-
   const selectedFamilyId = localStorage.getItem('selectedFamilyId') || families[0]?.id;
 
   const handleFamilyChange = (familyId) => {

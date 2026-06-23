@@ -32,19 +32,35 @@ export default function Dashboard() {
   
   const competencia = format(currentDate, 'yyyy-MM');
 
-  // Fetch current user and families
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => apiClient.auth.me()
   });
 
-  const { data: families = [], isLoading: loadingFamily } = useQuery({
+  const { data: myFamilies = [], isLoading: loadingFamily } = useQuery({
     queryKey: ['families', user?.email],
     queryFn: () => apiClient.entities.Family.filter({ created_by: user.email }),
     enabled: !!user
   });
 
   const selectedFamilyId = localStorage.getItem('selectedFamilyId');
+
+  // Se for admin, precisamos buscar todas as familias para achar a familia do cliente (caso esteja visualizando uma)
+  const { data: allAdminFamilies = [] } = useQuery({
+    queryKey: ['admin-families'],
+    queryFn: () => apiClient.admin.getFamilies(),
+    enabled: !!(user?.role === 'admin' && selectedFamilyId && !myFamilies.find(f => f.id === selectedFamilyId))
+  });
+
+  let families = [...myFamilies];
+  
+  if (user?.role === 'admin' && selectedFamilyId && !families.find(f => f.id === selectedFamilyId)) {
+    const clientFamily = allAdminFamilies.find(f => f.id === selectedFamilyId);
+    if (clientFamily) {
+      families = [clientFamily, ...families]; // Adiciona a família do cliente no dropdown temporariamente
+    }
+  }
+
   const family = selectedFamilyId 
     ? families.find(f => f.id === selectedFamilyId) 
     : families[0];
@@ -253,7 +269,7 @@ export default function Dashboard() {
             <p className="text-slate-500 mt-1">Aqui está seu resumo financeiro</p>
           </div>
           <div className="flex items-center gap-3">
-            <FamilySelector />
+            <FamilySelector families={families} />
             <MonthSelector currentDate={currentDate} onDateChange={setCurrentDate} />
           </div>
         </motion.div>
