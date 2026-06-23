@@ -137,20 +137,28 @@ function createGenericRouter() {
              if (parsedQuery.resolvido === 'false') parsedQuery.resolvido = false;
 
              if (entityParam === 'investmentdeposits') {
-                const myBoxes = await prisma.investmentBox.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
-                parsedQuery.box_id = { in: myBoxes.map(b => b.id) };
+                if (parsedQuery.box_id && req.user.role === 'admin') {
+                   // explicitly requested by admin, let it pass
+                } else if (!parsedQuery.box_id || req.user.role !== 'admin') {
+                   const myBoxes = await prisma.investmentBox.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
+                   parsedQuery.box_id = { in: myBoxes.map(b => b.id) };
+                }
              } else if (entityParam === 'debtpayments') {
-                const myDebts = await prisma.debt.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
-                parsedQuery.debt_id = { in: myDebts.map(d => d.id) };
+                if (parsedQuery.debt_id && req.user.role === 'admin') {
+                   // explicitly requested by admin, let it pass
+                } else if (!parsedQuery.debt_id || req.user.role !== 'admin') {
+                   const myDebts = await prisma.debt.findMany({ where: { family_id: { in: myFamilyIds } }, select: { id: true }});
+                   parsedQuery.debt_id = { in: myDebts.map(d => d.id) };
+                }
              } else if (monthScopedEntities.includes(entityParam) && parsedQuery.month_id) {
                 // For month-scoped entities, validate month ownership instead of filtering by family_id
                 try {
                   const relatedMonth = await prisma.financialMonth.findUnique({ where: { id: parsedQuery.month_id }, select: { family_id: true } });
-                  if (!relatedMonth || !myFamilyIds.includes(relatedMonth.family_id)) {
-                    return res.json([]); // Not the user's month
+                  if (!relatedMonth) return res.json([]);
+                  if (!myFamilyIds.includes(relatedMonth.family_id) && req.user.role !== 'admin') {
+                    return res.json([]); // Not the user's month and not admin
                   }
-                  // month_id is valid and belongs to user - do NOT add family_id filter
-                  // because older records may have family_id = null
+                  // month_id is valid and belongs to user or is requested by admin
                 } catch (e) {
                   console.error('[Generic] Error validating month ownership:', e.message);
                   return res.json([]);
@@ -158,10 +166,11 @@ function createGenericRouter() {
              } else {
                 // Scope by family_id
                 if (parsedQuery.family_id) {
-                   if (!myFamilyIds.includes(parsedQuery.family_id)) {
-                      return res.json([]); // Return empty if trying to spy
+                   if (!myFamilyIds.includes(parsedQuery.family_id) && req.user.role !== 'admin') {
+                      return res.json([]); // Return empty if trying to spy and not admin
                    }
                 } else {
+                   // Admin OR normal user didn't explicitly request a family: bind to their own to prevent loading everyone's data
                    parsedQuery.family_id = { in: myFamilyIds };
                 }
              }

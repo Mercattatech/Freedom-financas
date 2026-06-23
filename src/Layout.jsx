@@ -234,16 +234,7 @@ export default function Layout({ children, currentPageName }) {
                   </div>
                 </Link>
               )}
-              {user?.role === 'admin' && (
-                <Link
-                  to={createPageUrl('Admin')}
-                  className="p-2 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-all flex items-center gap-2 border border-emerald-200"
-                  title="Painel Administrativo"
-                >
-                  <Settings className="w-5 h-5" />
-                  <span className="text-sm font-semibold hidden md:block">Admin</span>
-                </Link>
-              )}
+
               <button
                 onClick={() => logout()}
                 className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
