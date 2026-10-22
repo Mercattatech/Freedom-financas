@@ -502,3 +502,21 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE "biz_webhook_event" ADD CONSTRAINT "biz_webhook_event_company_id_fkey" FOREIGN KEY ("company_id") REFERENCES "biz_company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- NFS-e (Asaas) migration
+-- ═══════════════════════════════════════════════════════════════════════════
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_code" TEXT;
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_name" TEXT;
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_descricao_padrao" TEXT;
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
+
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_status" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_pdf_url" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_xml_url" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_rps_numero" TEXT;
+ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_erro" TEXT;

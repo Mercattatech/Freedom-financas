@@ -93,6 +93,13 @@ async function applyPayment(company, event, payment) {
         },
       });
       await audit(ctx, 'pay', 'lancamento', t.id, `Asaas confirmou pagamento de R$ ${value} (${payment.id})`);
+      // Emissão automática de NFS-e (se configurada para emitir ao receber)
+      try {
+        const invoices = require('./invoices');
+        invoices.autoIssueOnPayment(company, t).catch((err) => console.error('[biz webhook auto-nfse error]', err));
+      } catch (err) {
+        console.error('[biz webhook auto-nfse]', err);
+      }
     }
     return 'PROCESSADO';
   }
@@ -115,9 +122,38 @@ async function applyPayment(company, event, payment) {
   return 'PROCESSADO';
 }
 
+async function applyInvoice(company, event, invoice) {
+  let t = null;
+  if (invoice.id) {
+    t = await prisma.bizTransaction.findFirst({ where: { asaas_invoice_id: invoice.id, company_id: company.id } });
+  }
+  if (!t && invoice.payment) {
+    t = await prisma.bizTransaction.findFirst({ where: { asaas_payment_id: invoice.payment, company_id: company.id } });
+  }
+  if (!t) return 'LANCAMENTO_NAO_ENCONTRADO';
+
+  const patch = {
+    asaas_invoice_id: invoice.id,
+    nfse_status: invoice.status,
+  };
+  if (invoice.number) patch.nfse_numero = invoice.number;
+  if (invoice.pdfUrl) patch.nfse_pdf_url = invoice.pdfUrl;
+  if (invoice.xmlUrl) patch.nfse_xml_url = invoice.xmlUrl;
+  if (invoice.rpsNumber) patch.nfse_rps_numero = String(invoice.rpsNumber);
+  if (invoice.status === 'ERROR') {
+    patch.nfse_erro = invoice.validationErrors || invoice.observations || 'Erro no processamento da NFS-e';
+  } else if (invoice.status === 'AUTHORIZED') {
+    patch.nfse_erro = null;
+  }
+
+  await prisma.bizTransaction.update({ where: { id: t.id }, data: patch });
+  await audit({ companyId: company.id, origem: 'WEBHOOK' }, 'update', 'nfse', invoice.id, `Asaas webhook NFS-e: ${event} (Status: ${invoice.status})`);
+  return 'PROCESSADO';
+}
+
 async function handleWebhook(companyId, headerToken, body) {
   const company = await verifyWebhook(companyId, headerToken);
-  const eventId = body?.id || `${body?.event}:${body?.payment?.id}:${body?.dateCreated}`;
+  const eventId = body?.id || `${body?.event}:${body?.payment?.id || body?.invoice?.id}:${body?.dateCreated}`;
   // Idempotência: entrega "at least once"
   try {
     await prisma.bizWebhookEvent.create({
@@ -130,7 +166,11 @@ async function handleWebhook(companyId, headerToken, body) {
   let status = 'IGNORADO';
   let erro = null;
   try {
-    if (body?.payment && String(body.event || '').startsWith('PAYMENT_')) status = await applyPayment(company, body.event, body.payment);
+    if (body?.payment && String(body.event || '').startsWith('PAYMENT_')) {
+      status = await applyPayment(company, body.event, body.payment);
+    } else if (body?.invoice && String(body.event || '').startsWith('INVOICE_')) {
+      status = await applyInvoice(company, body.event, body.invoice);
+    }
   } catch (e) {
     status = 'ERRO';
     erro = e.message;
@@ -140,4 +180,4 @@ async function handleWebhook(companyId, headerToken, body) {
   return { status };
 }
 
-module.exports = { handleWebhook, applyPayment, verifyWebhook };
+module.exports = { handleWebhook, applyPayment, applyInvoice, verifyWebhook };

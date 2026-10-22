@@ -17,6 +17,7 @@ const reports = require('../services/reports');
 const apiKeys = require('../services/apiKeys');
 const asaasSync = require('../services/asaasSync');
 const asaasImport = require('../services/asaasImport');
+const invoices = require('../services/invoices');
 const { AsaasClient } = require('../services/asaas');
 const { runDaily } = require('../jobs/daily');
 const { mcpHandler } = require('../mcp/server');
@@ -133,6 +134,11 @@ function createBizRouter() {
   // Contas a pagar / receber
   const finWrite = requirePerm('financeiro:write');
   r.get('/transactions', ah(async (req, res) => res.json(await transactions.list(req.ctx, req.query))));
+  r.post('/transactions/batch/pay', finWrite, ah(async (req, res) => res.json(await transactions.batchPay(req.ctx, req.body || {}))));
+  r.post('/transactions/batch/cancel', finWrite, ah(async (req, res) => res.json(await transactions.batchCancel(req.ctx, req.body || {}))));
+  r.post('/transactions/batch/delete', finWrite, ah(async (req, res) => res.json(await transactions.batchDelete(req.ctx, req.body || {}))));
+  r.post('/transactions/batch/update', finWrite, ah(async (req, res) => res.json(await transactions.batchUpdate(req.ctx, req.body || {}))));
+  r.post('/transactions/batch/invoice', finWrite, ah(async (req, res) => res.json(await invoices.batchIssueInvoices(req.ctx, req.body || {}))));
   r.get('/transactions/:id', ah(async (req, res) => res.json(await transactions.get(req.ctx, req.params.id))));
   r.post('/transactions', finWrite, ah(async (req, res) => res.status(201).json(await transactions.create(req.ctx, req.body || {}))));
   r.put('/transactions/:id', finWrite, ah(async (req, res) => res.json(await transactions.update(req.ctx, req.params.id, req.body || {}))));
@@ -141,6 +147,9 @@ function createBizRouter() {
   r.post('/transactions/:id/reopen', finWrite, ah(async (req, res) => res.json(await transactions.reopen(req.ctx, req.params.id))));
   r.post('/transactions/:id/cancel', finWrite, ah(async (req, res) => res.json(await transactions.cancel(req.ctx, req.params.id, req.body || {}))));
   r.post('/transactions/:id/charge', finWrite, ah(async (req, res) => res.json(await transactions.charge(req.ctx, req.params.id, req.body || {}))));
+  r.post('/transactions/:id/invoice', finWrite, ah(async (req, res) => res.json(await invoices.issueInvoice(req.ctx, req.params.id, req.body || {}))));
+  r.get('/transactions/:id/invoice', ah(async (req, res) => res.json(await invoices.syncInvoiceStatus(req.ctx, req.params.id))));
+  r.post('/transactions/:id/invoice/cancel', finWrite, ah(async (req, res) => res.json(await invoices.cancelInvoice(req.ctx, req.params.id, req.body || {}))));
 
   // Contratos
   const ctWrite = requirePerm('contratos:write');

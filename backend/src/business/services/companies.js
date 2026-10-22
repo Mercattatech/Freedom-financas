@@ -61,6 +61,8 @@ const EDITABLE = [
   'cor_secundaria', 'regime_tributario', 'aliquota_imposto', 'aliquota_comissao', 'meta_margem_contrato',
   'rateio_overhead', 'asaas_ambiente', 'asaas_conta_financeira_id', 'proposta_validade_dias', 'proposta_termos',
   'proposta_rodape',
+  'municipal_service_code', 'municipal_service_name', 'nfse_descricao_padrao',
+  'nfse_emitir_ao_receber', 'nfse_reter_iss', 'nfse_aliquota_iss',
 ];
 
 async function update(ctx, data) {
@@ -90,7 +92,10 @@ async function getWebhookInfo(ctx, baseUrl) {
   return {
     url: `${baseUrl}/api/biz/webhooks/asaas/${c.id}`,
     token: decrypt(c.asaas_webhook_token),
-    eventos: ['PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'PAYMENT_DELETED', 'PAYMENT_REFUNDED', 'PAYMENT_RECEIVED_IN_CASH_UNDONE'],
+    eventos: [
+      'PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_OVERDUE', 'PAYMENT_DELETED', 'PAYMENT_REFUNDED', 'PAYMENT_RECEIVED_IN_CASH_UNDONE',
+      'INVOICE_CREATED', 'INVOICE_SYNCHRONIZED', 'INVOICE_AUTHORIZED', 'INVOICE_PROCESSING_CANCELLATION', 'INVOICE_CANCELED', 'INVOICE_ERROR',
+    ],
   };
 }
 

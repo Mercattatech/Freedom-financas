@@ -199,7 +199,80 @@ function AsaasTab() {
           </div>
         )}
       </Panel>
+
+      <NfseConfigPanel />
     </div>
+  );
+}
+
+function NfseConfigPanel() {
+  const compQ = useBizQuery('/company');
+  const [f, setF] = useState(null);
+  const save = useBizMutation((body) => biz('/company', { method: 'PUT', body }), {
+    success: 'Configurações de NFS-e salvas',
+    onSuccess: () => compQ.refetch(),
+  });
+
+  if (compQ.isLoading) return <Loading />;
+  const c = f || compQ.data || {};
+  const set = (k) => (e) => {
+    const val = e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e;
+    setF({ ...c, [k]: val });
+  };
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    save.mutate({
+      municipal_service_code: c.municipal_service_code || null,
+      municipal_service_name: c.municipal_service_name || null,
+      nfse_descricao_padrao: c.nfse_descricao_padrao || null,
+      nfse_aliquota_iss: c.nfse_aliquota_iss !== undefined && c.nfse_aliquota_iss !== '' ? Number(c.nfse_aliquota_iss) : null,
+      nfse_reter_iss: !!c.nfse_reter_iss,
+      nfse_emitir_ao_receber: !!c.nfse_emitir_ao_receber,
+    });
+  };
+
+  return (
+    <Panel title="Emissão de Notas Fiscais de Serviços (NFS-e)">
+      <form onSubmit={handleSave} className="space-y-4">
+        <p className="text-sm text-[var(--ink-2)]">
+          Configure os dados fiscais municipais cadastrados na prefeitura junto ao Asaas para emissão de Notas Fiscais de Serviço (NFS-e) diretamente pelas Contas a Receber.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Código do Serviço Municipal" hint="Código de tributação do serviço (ex: 1.07 ou 0107)">
+            <Input value={c.municipal_service_code || ''} onChange={set('municipal_service_code')} placeholder="Ex: 1.07" />
+          </Field>
+          <Field label="Nome / Discriminação do Serviço" hint="Nome do serviço conforme tabela municipal">
+            <Input value={c.municipal_service_name || ''} onChange={set('municipal_service_name')} placeholder="Ex: Suporte técnico e consultoria em TI" />
+          </Field>
+        </div>
+
+        <Field label="Descrição Padrão dos Serviços" hint="Texto pré-preenchido no corpo da nota fiscal (pode ser ajustado antes de cada emissão)">
+          <Textarea rows={3} value={c.nfse_descricao_padrao || ''} onChange={set('nfse_descricao_padrao')} placeholder="Prestação de serviços de consultoria e assessoria conforme contrato..." />
+        </Field>
+
+        <div className="grid sm:grid-cols-2 gap-4 items-center">
+          <Field label="Alíquota ISS Padrão (%)" hint="Percentual de ISS aplicado no município">
+            <Input type="number" step="0.01" min="0" max="100" value={c.nfse_aliquota_iss ?? ''} onChange={set('nfse_aliquota_iss')} placeholder="Ex: 2.00 ou 5.00" />
+          </Field>
+          <div className="space-y-3 pt-2">
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
+              <input type="checkbox" checked={!!c.nfse_reter_iss} onChange={set('nfse_reter_iss')} className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]" />
+              Reter ISS na fonte por padrão
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
+              <input type="checkbox" checked={!!c.nfse_emitir_ao_receber} onChange={set('nfse_emitir_ao_receber')} className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]" />
+              Emitir NFS-e automaticamente ao receber pagamentos
+            </label>
+          </div>
+        </div>
+
+        <div className="pt-2">
+          <Button type="submit" loading={save.isPending}>Salvar parâmetros da NFS-e</Button>
+        </div>
+      </form>
+    </Panel>
   );
 }
 

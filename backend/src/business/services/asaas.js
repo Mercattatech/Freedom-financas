@@ -162,6 +162,44 @@ class AsaasClient {
     return this.request('POST', `/bill/${id}/cancel`);
   }
 
+  // Notas Fiscais de Serviço (NFS-e)
+  createInvoice({ payment, customer, serviceDescription, observations, value, deductions, effectiveDate, municipalServiceCode, municipalServiceName, taxes, externalReference }) {
+    return this.request('POST', '/invoices', {
+      payment,
+      customer,
+      serviceDescription: serviceDescription?.slice(0, 2000),
+      observations: observations?.slice(0, 500),
+      value: value !== undefined && value !== null ? round2(value) : undefined,
+      deductions: deductions !== undefined && deductions !== null ? round2(deductions) : undefined,
+      effectiveDate: effectiveDate ? ymd(effectiveDate) : undefined,
+      municipalServiceCode: municipalServiceCode || undefined,
+      municipalServiceName: municipalServiceName || undefined,
+      taxes: taxes || undefined,
+      externalReference,
+    });
+  }
+
+  getInvoice(id) {
+    return this.request('GET', `/invoices/${id}`);
+  }
+
+  authorizeInvoice(id) {
+    return this.request('POST', `/invoices/${id}/authorize`);
+  }
+
+  cancelInvoice(id) {
+    return this.request('POST', `/invoices/${id}/cancel`);
+  }
+
+  listInvoices({ offset = 0, limit = 100, payment, status } = {}) {
+    const params = new URLSearchParams();
+    params.set('offset', offset);
+    params.set('limit', limit);
+    if (payment) params.set('payment', payment);
+    if (status) params.set('status', status);
+    return this.request('GET', `/invoices?${params.toString()}`);
+  }
+
   // Conta
   getBalance() { return this.request('GET', '/finance/balance'); }
   getMyAccount() { return this.request('GET', '/myAccount/commercialInfo/'); }

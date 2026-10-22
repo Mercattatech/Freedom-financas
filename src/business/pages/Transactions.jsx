@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check } from 'lucide-react';
+import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -17,13 +17,22 @@ export default function Transactions({ tipo }) {
   const [q, setQ] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [nfseFilter, setNfseFilter] = useState('');
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [billModal, setBillModal] = useState(false);
+  const [invoiceModal, setInvoiceModal] = useState(null);
+  const [batchInvoiceModal, setBatchInvoiceModal] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [batchPayModal, setBatchPayModal] = useState(false);
+  const [batchUpdateModal, setBatchUpdateModal] = useState(false);
+  const [batchCancelModal, setBatchCancelModal] = useState(false);
+  const [batchDeleteModal, setBatchDeleteModal] = useState(false);
+
   const { can } = useBiz();
   const dq = useDebounced(q);
-  const list = useBizQuery('/transactions', { tipo, situacao, q: dq, from, to });
+  const list = useBizQuery('/transactions', { tipo, situacao, q: dq, from, to, nfse_status: nfseFilter || undefined });
   const write = can('financeiro:write');
 
   const act = useBizMutation(({ id, action, body, method = 'POST' }) => biz(`/transactions/${id}${action ? `/${action}` : ''}`, { method, body }), {
@@ -32,6 +41,27 @@ export default function Transactions({ tipo }) {
 
   const items = list.data?.items || [];
   const r = list.data?.resumo;
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.length === items.length && items.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(items.map((t) => t.id));
+    }
+  };
+
+  const selectedItems = useMemo(() => items.filter((t) => selectedIds.includes(t.id)), [items, selectedIds]);
+  const totalSelected = useMemo(() => selectedItems.reduce((acc, t) => acc + (Number(t.saldo ?? t.valor) || 0), 0), [selectedItems]);
+
+  const onFilterSituacao = (k) => {
+    setSelectedIds([]);
+    setSituacao(k);
+    setSp(k ? { situacao: k } : {});
+  };
 
   return (
     <>
@@ -55,12 +85,25 @@ export default function Transactions({ tipo }) {
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">
           {SITUACOES.map(([k, l]) => (
-            <button key={k || 'all'} onClick={() => { setSituacao(k); setSp(k ? { situacao: k } : {}); }} className={cx('px-3 h-9 rounded-md text-sm font-semibold', situacao === k ? 'bg-[var(--ink)] text-[var(--surface)]' : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]')}>{l}</button>
+            <button key={k || 'all'} onClick={() => onFilterSituacao(k)} className={cx('px-3 h-9 rounded-md text-sm font-semibold', situacao === k ? 'bg-[var(--ink)] text-[var(--surface)]' : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]')}>{l}</button>
           ))}
         </div>
-        <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-[150px]" aria-label="Vencimento de" />
-        <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-[150px]" aria-label="Vencimento até" />
-        <SearchInput value={q} onChange={setQ} placeholder={receita ? 'Buscar descrição ou cliente' : 'Buscar descrição ou fornecedor'} />
+        <Input type="date" value={from} onChange={(e) => { setSelectedIds([]); setFrom(e.target.value); }} className="w-[150px]" aria-label="Vencimento de" />
+        <Input type="date" value={to} onChange={(e) => { setSelectedIds([]); setTo(e.target.value); }} className="w-[150px]" aria-label="Vencimento até" />
+        {receita && (
+          <Select
+            value={nfseFilter}
+            onChange={(e) => { setSelectedIds([]); setNfseFilter(e.target.value); }}
+            className="w-[160px]"
+            aria-label="Filtro de NFS-e"
+          >
+            <option value="">NFS-e: Todas</option>
+            <option value="AUTHORIZED">NFS-e: Autorizada</option>
+            <option value="SCHEDULED">NFS-e: Agendada</option>
+            <option value="ERROR">NFS-e: Com erro</option>
+          </Select>
+        )}
+        <SearchInput value={q} onChange={(val) => { setSelectedIds([]); setQ(val); }} placeholder={receita ? 'Buscar descrição ou cliente' : 'Buscar descrição ou fornecedor'} />
       </div>
 
       {r && (
@@ -79,44 +122,163 @@ export default function Transactions({ tipo }) {
         ) : (
           <div className="overflow-x-auto">
             <table className="tbl">
-              <thead><tr><th>Vencimento</th><th>Descrição</th><th>{receita ? 'Cliente' : 'Fornecedor'}</th><th>Classificação</th><th className="r">Valor</th><th className="r">Em aberto</th><th>Situação</th><th className="r"><span className="sr-only">Ações</span></th></tr></thead>
+              <thead>
+                <tr>
+                  {write && (
+                    <th className="w-10 text-center px-2">
+                      <input
+                        type="checkbox"
+                        checked={items.length > 0 && selectedIds.length === items.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded border-[var(--line)] cursor-pointer accent-[var(--result)]"
+                        title="Selecionar todos"
+                        aria-label="Selecionar todos"
+                      />
+                    </th>
+                  )}
+                  <th>Vencimento</th>
+                  <th>Descrição</th>
+                  <th>{receita ? 'Cliente' : 'Fornecedor'}</th>
+                  <th>Classificação</th>
+                  <th className="r">Valor</th>
+                  <th className="r">Em aberto</th>
+                  <th>Situação</th>
+                  <th className="r"><span className="sr-only">Ações</span></th>
+                </tr>
+              </thead>
               <tbody>
-                {items.map((t) => (
-                  <tr key={t.id}>
-                    <td className="num whitespace-nowrap">{date(t.vencimento)}{t.dias_atraso > 0 && <div className="text-xs text-[var(--bad)]">{t.dias_atraso} dias de atraso</div>}</td>
-                    <td className="min-w-[220px]">
-                      <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
-                      {t.contract && <div className="text-xs text-[var(--muted)]">Contrato #{t.contract.numero}</div>}
-                    </td>
-                    <td className="text-[var(--ink-2)]">{t.client?.nome_fantasia || t.client?.nome || t.supplier?.nome || '—'}</td>
-                    <td className="text-xs text-[var(--ink-2)] min-w-[140px]">{t.account ? t.account.nome : <span className="text-[var(--warn)] font-semibold">Sem classificação</span>}{t.costCenter && <div className="text-[var(--muted)]">{t.costCenter.nome}</div>}</td>
-                    <td className="r"><Money value={t.valor} /></td>
-                    <td className="r"><Money value={['PAGO', 'CANCELADO'].includes(t.status) ? 0 : t.saldo} /></td>
-                    <td><StatusPill status={t.situacao} />{t.asaas_payment_id && <div className="text-[11px] text-[var(--muted)] mt-0.5">Asaas</div>}</td>
-                    <td className="r whitespace-nowrap">
+                {items.map((t) => {
+                  const isSelected = selectedIds.includes(t.id);
+                  return (
+                    <tr key={t.id} className={cx(isSelected && 'bg-[var(--side-active)]/10')}>
                       {write && (
-                        <div className="inline-flex gap-1">
-                          {!['PAGO', 'CANCELADO'].includes(t.status) && <Button size="sm" variant={receita ? 'success' : 'primary'} icon={Wallet} onClick={() => setPaying(t)}>{receita ? 'Receber' : 'Pagar'}</Button>}
-                          {receita && t.status === 'PENDENTE' && !t.asaas_payment_id && t.client && <Button size="sm" variant="secondary" icon={Send} loading={act.isPending && act.variables?.id === t.id} onClick={() => act.mutate({ id: t.id, action: 'charge' })} title="Emitir cobrança no Asaas">Cobrar</Button>}
-                          {t.asaas_invoice_url && <Button size="sm" variant="ghost" icon={Link2} onClick={() => { navigator.clipboard.writeText(t.asaas_invoice_url); toast.success('Link de pagamento copiado'); }} title="Copiar link de pagamento" aria-label="Copiar link de pagamento" />}
-                          {t.asaas_pix_payload && <Button size="sm" variant="ghost" icon={Copy} onClick={() => { navigator.clipboard.writeText(t.asaas_pix_payload); toast.success('PIX copia e cola copiado'); }} title="Copiar PIX copia e cola" aria-label="Copiar PIX" />}
-                          {['PAGO', 'PARCIAL'].includes(t.status) && <Button size="sm" variant="ghost" icon={Undo2} onClick={() => window.confirm('Estornar a baixa deste lançamento?') && act.mutate({ id: t.id, action: 'reopen' })} title="Estornar baixa" aria-label="Estornar baixa" />}
-                          {t.status === 'PENDENTE' && <Button size="sm" variant="ghost" icon={Ban} onClick={() => { const m = window.prompt('Motivo do cancelamento (opcional)'); if (m !== null) act.mutate({ id: t.id, action: 'cancel', body: { motivo: m } }); }} title="Cancelar" aria-label="Cancelar" />}
-                        </div>
+                        <td className="w-10 text-center px-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelect(t.id)}
+                            className="w-4 h-4 rounded border-[var(--line)] cursor-pointer accent-[var(--result)]"
+                            aria-label={`Selecionar ${t.descricao}`}
+                          />
+                        </td>
                       )}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="num whitespace-nowrap">{date(t.vencimento)}{t.dias_atraso > 0 && <div className="text-xs text-[var(--bad)]">{t.dias_atraso} dias de atraso</div>}</td>
+                      <td className="min-w-[220px]">
+                        <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
+                        {t.contract && <div className="text-xs text-[var(--muted)]">Contrato #{t.contract.numero}</div>}
+                      </td>
+                      <td className="text-[var(--ink-2)]">{t.client?.nome_fantasia || t.client?.nome || t.supplier?.nome || '—'}</td>
+                      <td className="text-xs text-[var(--ink-2)] min-w-[140px]">{t.account ? t.account.nome : <span className="text-[var(--warn)] font-semibold">Sem classificação</span>}{t.costCenter && <div className="text-[var(--muted)]">{t.costCenter.nome}</div>}</td>
+                      <td className="r"><Money value={t.valor} /></td>
+                      <td className="r"><Money value={['PAGO', 'CANCELADO'].includes(t.status) ? 0 : t.saldo} /></td>
+                      <td>
+                        <StatusPill status={t.situacao} />
+                        {t.asaas_payment_id && <div className="text-[11px] text-[var(--muted)] mt-0.5">Asaas</div>}
+                        {receita && t.nfse_status && (
+                          <div className="mt-1">
+                            {t.nfse_status === 'AUTHORIZED' ? (
+                              <button
+                                onClick={() => setInvoiceModal(t)}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--in)] bg-[var(--in)]/10 hover:bg-[var(--in)]/20 px-1.5 py-0.5 rounded transition-colors"
+                                title="NFS-e Autorizada - clique para ver"
+                              >
+                                <FileText className="w-3 h-3" /> NFS-e #{t.nfse_numero || 'OK'}
+                              </button>
+                            ) : t.nfse_status === 'ERROR' ? (
+                              <button
+                                onClick={() => setInvoiceModal(t)}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--bad)] bg-[var(--bad)]/10 hover:bg-[var(--bad)]/20 px-1.5 py-0.5 rounded transition-colors"
+                                title={t.nfse_erro || 'Erro na emissão'}
+                              >
+                                <AlertTriangle className="w-3 h-3" /> Erro NFS-e
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setInvoiceModal(t)}
+                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--warn)] bg-[var(--warn)]/10 hover:bg-[var(--warn)]/20 px-1.5 py-0.5 rounded transition-colors"
+                                title={`NFS-e: ${t.nfse_status}`}
+                              >
+                                <RefreshCw className="w-3 h-3 animate-spin" /> NFS-e
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="r whitespace-nowrap">
+                        {write && (
+                          <div className="inline-flex gap-1">
+                            {!['PAGO', 'CANCELADO'].includes(t.status) && <Button size="sm" variant={receita ? 'success' : 'primary'} icon={Wallet} onClick={() => setPaying(t)}>{receita ? 'Receber' : 'Pagar'}</Button>}
+                            {receita && t.status === 'PENDENTE' && !t.asaas_payment_id && t.client && <Button size="sm" variant="secondary" icon={Send} loading={act.isPending && act.variables?.id === t.id} onClick={() => act.mutate({ id: t.id, action: 'charge' })} title="Emitir cobrança no Asaas">Cobrar</Button>}
+                            {receita && (
+                              <Button
+                                size="sm"
+                                variant={t.nfse_status === 'AUTHORIZED' ? 'ghost' : 'secondary'}
+                                icon={FileText}
+                                onClick={() => setInvoiceModal(t)}
+                                title={t.nfse_status === 'AUTHORIZED' ? `NFS-e Nº ${t.nfse_numero}` : 'Emitir Nota Fiscal (NFS-e)'}
+                                aria-label="Nota Fiscal"
+                              />
+                            )}
+                            {t.asaas_invoice_url && <Button size="sm" variant="ghost" icon={Link2} onClick={() => { navigator.clipboard.writeText(t.asaas_invoice_url); toast.success('Link de pagamento copiado'); }} title="Copiar link de pagamento" aria-label="Copiar link de pagamento" />}
+                            {t.asaas_pix_payload && <Button size="sm" variant="ghost" icon={Copy} onClick={() => { navigator.clipboard.writeText(t.asaas_pix_payload); toast.success('PIX copia e cola copiado'); }} title="Copiar PIX copia e cola" aria-label="Copiar PIX" />}
+                            {['PAGO', 'PARCIAL'].includes(t.status) && <Button size="sm" variant="ghost" icon={Undo2} onClick={() => window.confirm('Estornar a baixa deste lançamento?') && act.mutate({ id: t.id, action: 'reopen' })} title="Estornar baixa" aria-label="Estornar baixa" />}
+                            {t.status === 'PENDENTE' && <Button size="sm" variant="ghost" icon={Ban} onClick={() => { const m = window.prompt('Motivo do cancelamento (opcional)'); if (m !== null) act.mutate({ id: t.id, action: 'cancel', body: { motivo: m } }); }} title="Cancelar" aria-label="Cancelar" />}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </section>
 
+      {/* Barra flutuante de ações em massa */}
+      {selectedIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center gap-2 sm:gap-4 px-4 py-3 bg-[var(--ink)] text-[var(--surface)] rounded-2xl shadow-2xl border border-white/10 animate-in fade-in slide-in-from-bottom-4 duration-200 max-w-[95vw]">
+          <div className="flex items-center gap-2 pr-3 border-r border-white/20 shrink-0">
+            <span className="font-extrabold text-sm">{selectedIds.length} selecionado{selectedIds.length > 1 ? 's' : ''}</span>
+            <span className="text-xs text-[var(--muted)]">({money(totalSelected)})</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Button size="sm" variant={receita ? 'success' : 'primary'} icon={Wallet} onClick={() => setBatchPayModal(true)}>
+              {receita ? 'Baixar recebimentos' : 'Baixar pagamentos'}
+            </Button>
+            {receita && (
+              <Button size="sm" variant="secondary" icon={FileText} onClick={() => setBatchInvoiceModal(true)}>
+                Emitir NFS-e
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" icon={Tag} onClick={() => setBatchUpdateModal(true)}>
+              Classificar
+            </Button>
+            <Button size="sm" variant="ghost" icon={Ban} onClick={() => setBatchCancelModal(true)} className="hover:bg-white/10 text-white">
+              Cancelar
+            </Button>
+            <Button size="sm" variant="danger" icon={Trash2} onClick={() => setBatchDeleteModal(true)}>
+              Excluir
+            </Button>
+          </div>
+
+          <button onClick={() => setSelectedIds([])} className="p-1 rounded-lg hover:bg-white/10 text-[var(--muted)] hover:text-white ml-auto" title="Desmarcar todos" aria-label="Desmarcar todos">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {editing && <TransactionForm tipo={tipo} initial={editing} onClose={() => setEditing(null)} onDelete={(id) => act.mutate({ id, action: '', method: 'DELETE' }, { onSuccess: () => setEditing(null) })} />}
       {paying && <PayModal t={paying} onClose={() => setPaying(null)} />}
       {linkModal && <PaymentLinkModal onClose={() => setLinkModal(false)} />}
       {billModal && <PayBillModal onClose={() => setBillModal(false)} />}
+      {invoiceModal && <InvoiceModal t={invoiceModal} onClose={() => setInvoiceModal(null)} onRefresh={() => list.refetch()} />}
+      {batchInvoiceModal && <BatchInvoiceModal ids={selectedIds} count={selectedIds.length} total={totalSelected} onClose={() => setBatchInvoiceModal(false)} onSuccess={() => { setSelectedIds([]); list.refetch(); }} />}
+      {batchPayModal && <BatchPayModal ids={selectedIds} count={selectedIds.length} total={totalSelected} tipo={tipo} onClose={() => setBatchPayModal(false)} onSuccess={() => setSelectedIds([])} />}
+      {batchUpdateModal && <BatchUpdateModal ids={selectedIds} count={selectedIds.length} tipo={tipo} onClose={() => setBatchUpdateModal(false)} onSuccess={() => setSelectedIds([])} />}
+      {batchCancelModal && <BatchCancelModal ids={selectedIds} count={selectedIds.length} onClose={() => setBatchCancelModal(false)} onSuccess={() => setSelectedIds([])} />}
+      {batchDeleteModal && <BatchDeleteModal ids={selectedIds} count={selectedIds.length} onClose={() => setBatchDeleteModal(false)} onSuccess={() => setSelectedIds([])} />}
     </>
   );
 }
@@ -389,4 +551,510 @@ function PayBillModal({ onClose }) {
     </Modal>
   );
 }
+
+function BatchPayModal({ ids, count, total, tipo, onClose, onSuccess }) {
+  const receita = tipo === 'RECEITA';
+  const L = useLookups();
+  const [f, setF] = useState({
+    data_pagamento: todayYmd(),
+    bank_account_id: '',
+    informar_asaas: true,
+  });
+
+  const act = useBizMutation((body) => biz('/transactions/batch/pay', { method: 'POST', body }), {
+    success: (r) => `${r.count} lançamentos baixados com sucesso!`,
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={receita ? 'Baixar recebimentos em lote' : 'Baixar pagamentos em lote'}
+      description={`Você está prestes a quitar ${count} lançamentos no valor total de ${money(total)}.`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            variant={receita ? 'success' : 'primary'}
+            loading={act.isPending}
+            onClick={() => act.mutate({ ids, ...f, bank_account_id: f.bank_account_id || undefined })}
+          >
+            Confirmar baixa de {count} lançamentos
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs text-[var(--ink-2)]">
+          Todos os lançamentos selecionados em aberto serão marcados como <b>PAGO</b> e terão seus saldos quitados.
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Data da baixa / liquidação">
+            <Input type="date" value={f.data_pagamento} onChange={(e) => setF({ ...f, data_pagamento: e.target.value })} />
+          </Field>
+          <Field label="Conta bancária / caixa">
+            <Select value={f.bank_account_id} onChange={(e) => setF({ ...f, bank_account_id: e.target.value })}>
+              <option value="">Manter conta padrão</option>
+              {L.banks.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
+            </Select>
+          </Field>
+        </div>
+        {receita && (
+          <label className="flex items-start gap-2 text-xs text-[var(--muted)]">
+            <input type="checkbox" checked={f.informar_asaas} onChange={(e) => setF({ ...f, informar_asaas: e.target.checked })} className="mt-0.5 rounded" />
+            <span>Informar recebimento em dinheiro ao Asaas para os títulos que foram gerados por lá (evita cobrança duplicada).</span>
+          </label>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function BatchUpdateModal({ ids, count, tipo, onClose, onSuccess }) {
+  const L = useLookups();
+  const accounts = (L.accounts || []).filter((a) => a.natureza === tipo);
+
+  const [f, setF] = useState({
+    account_id: '',
+    cost_center_id: '',
+    bank_account_id: '',
+    forma_pagamento: '',
+    vencimento: '',
+  });
+
+  const act = useBizMutation((body) => biz('/transactions/batch/update', { method: 'POST', body }), {
+    success: (r) => `${r.count} lançamentos atualizados com sucesso!`,
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  const submit = () => {
+    const patch = {};
+    if (f.account_id) patch.account_id = f.account_id;
+    if (f.cost_center_id) patch.cost_center_id = f.cost_center_id;
+    if (f.bank_account_id) patch.bank_account_id = f.bank_account_id;
+    if (f.forma_pagamento) patch.forma_pagamento = f.forma_pagamento;
+    if (f.vencimento) patch.vencimento = f.vencimento;
+
+    if (!Object.keys(patch).length) {
+      toast.error('Selecione pelo menos um campo para alterar');
+      return;
+    }
+    act.mutate({ ids, patch });
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Classificar e alterar em lote"
+      description={`Altere os dados de ${count} lançamentos selecionados. Preencha apenas os campos que deseja sobrescrever.`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" loading={act.isPending} onClick={submit}>
+            Aplicar alterações
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Plano de contas (Categoria)" hint="Preencha apenas se quiser alterar de todos">
+          <Select value={f.account_id} onChange={(e) => setF({ ...f, account_id: e.target.value })}>
+            <option value="">Não alterar</option>
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.codigo} — {a.nome}</option>)}
+          </Select>
+        </Field>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Centro de custo">
+            <Select value={f.cost_center_id} onChange={(e) => setF({ ...f, cost_center_id: e.target.value })}>
+              <option value="">Não alterar</option>
+              {L.costCenters.map((cc) => <option key={cc.id} value={cc.id}>{cc.nome}</option>)}
+            </Select>
+          </Field>
+          <Field label="Conta bancária padrão">
+            <Select value={f.bank_account_id} onChange={(e) => setF({ ...f, bank_account_id: e.target.value })}>
+              <option value="">Não alterar</option>
+              {L.banks.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Forma de pagamento">
+            <Select value={f.forma_pagamento} onChange={(e) => setF({ ...f, forma_pagamento: e.target.value })}>
+              <option value="">Não alterar</option>
+              {Object.entries(FORMAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </Select>
+          </Field>
+          <Field label="Nova data de vencimento">
+            <Input type="date" value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function BatchCancelModal({ ids, count, onClose, onSuccess }) {
+  const [motivo, setMotivo] = useState('');
+  const [cancelarAsaas, setCancelarAsaas] = useState(true);
+
+  const act = useBizMutation((body) => biz('/transactions/batch/cancel', { method: 'POST', body }), {
+    success: (r) => `${r.count} lançamentos cancelados!`,
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Cancelar lançamentos em lote"
+      description={`Deseja cancelar ${count} lançamentos selecionados?`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Voltar</Button>
+          <Button
+            variant="danger"
+            loading={act.isPending}
+            onClick={() => act.mutate({ ids, motivo, cancelar_asaas: cancelarAsaas })}
+          >
+            Confirmar cancelamento
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Motivo do cancelamento (opcional)">
+          <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: Acordo comercial, cobrança indevida..." />
+        </Field>
+        <label className="flex items-start gap-2 text-xs text-[var(--muted)]">
+          <input type="checkbox" checked={cancelarAsaas} onChange={(e) => setCancelarAsaas(e.target.checked)} className="mt-0.5 rounded" />
+          <span>Cancelar também as cobranças pendentes vinculadas no Asaas.</span>
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function BatchDeleteModal({ ids, count, onClose, onSuccess }) {
+  const act = useBizMutation((body) => biz('/transactions/batch/delete', { method: 'POST', body }), {
+    success: (r) => `${r.count} lançamentos excluídos!`,
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Excluir lançamentos em lote"
+      description={`Tem certeza que deseja excluir ${count} lançamentos? Lançamentos com pagamentos já realizados serão preservados por segurança.`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            variant="danger"
+            loading={act.isPending}
+            onClick={() => act.mutate({ ids })}
+          >
+            Excluir lançamentos
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm text-[var(--bad)] font-semibold">Esta ação é irreversível.</p>
+    </Modal>
+  );
+}
+
+function InvoiceModal({ t, onClose, onRefresh }) {
+  const compQ = useBizQuery('/company');
+  const [f, setF] = useState(null);
+
+  const issue = useBizMutation((body) => biz(`/transactions/${t.id}/invoice`, { method: 'POST', body }), {
+    success: 'NFS-e solicitada com sucesso no Asaas!',
+    onSuccess: () => {
+      onRefresh?.();
+      onClose();
+    },
+  });
+
+  const sync = useBizMutation(() => biz(`/transactions/${t.id}/invoice`), {
+    success: 'Status da NFS-e atualizado!',
+    onSuccess: () => onRefresh?.(),
+  });
+
+  const cancelInv = useBizMutation((body) => biz(`/transactions/${t.id}/invoice/cancel`, { method: 'POST', body }), {
+    success: 'Cancelamento da NFS-e solicitado!',
+    onSuccess: () => {
+      onRefresh?.();
+      onClose();
+    },
+  });
+
+  const comp = compQ.data || {};
+  const data = f || {
+    serviceDescription: t.nfse_descricao_padrao || comp.nfse_descricao_padrao || t.descricao || '',
+    municipalServiceCode: comp.municipal_service_code || '',
+    municipalServiceName: comp.municipal_service_name || '',
+    iss: comp.nfse_aliquota_iss !== undefined && comp.nfse_aliquota_iss !== null ? comp.nfse_aliquota_iss : '',
+    retainIss: !!comp.nfse_reter_iss,
+    value: t.valor,
+    observations: t.observacoes || '',
+    authorizeNow: true,
+  };
+
+  const set = (k) => (e) => {
+    const val = e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e;
+    setF({ ...data, [k]: val });
+  };
+
+  const handleIssue = (e) => {
+    e.preventDefault();
+    issue.mutate({
+      serviceDescription: data.serviceDescription,
+      municipalServiceCode: data.municipalServiceCode || undefined,
+      municipalServiceName: data.municipalServiceName || undefined,
+      iss: data.iss !== '' ? Number(data.iss) : undefined,
+      retainIss: !!data.retainIss,
+      value: Number(data.value),
+      observations: data.observations || undefined,
+      authorizeNow: !!data.authorizeNow,
+    });
+  };
+
+  const handleCancel = () => {
+    const motivo = window.prompt('Informe o motivo do cancelamento da NFS-e:');
+    if (motivo !== null) {
+      cancelInv.mutate({ motivo });
+    }
+  };
+
+  const isAuthorized = t.nfse_status === 'AUTHORIZED';
+  const isPending = ['SCHEDULED', 'SYNCHRONIZED', 'PROCESSING_CANCELLATION'].includes(t.nfse_status);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Nota Fiscal de Serviços (NFS-e) — Asaas"
+      width={600}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          {isAuthorized ? (
+            <Button variant="danger" icon={Ban} loading={cancelInv.isPending} onClick={handleCancel}>
+              Cancelar NFS-e
+            </Button>
+          ) : isPending ? (
+            <Button variant="secondary" icon={RefreshCw} loading={sync.isPending} onClick={() => sync.mutate()}>
+              Sincronizar status
+            </Button>
+          ) : (
+            <Button type="submit" form="nfse-form" variant="primary" icon={FileText} loading={issue.isPending}>
+              Emitir NFS-e no Asaas
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* Resumo do Lançamento */}
+        <div className="p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] text-xs space-y-1">
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">Lançamento:</span>
+            <b className="text-[var(--ink)]">{t.descricao}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">Cliente:</span>
+            <b className="text-[var(--ink)]">{t.client?.nome || '—'}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">CPF / CNPJ do Tomador:</span>
+            <b className="text-[var(--ink)]">{t.client?.documento || <span className="text-[var(--bad)] font-semibold">Não cadastrado</span>}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">Valor do serviço:</span>
+            <b className="text-[var(--ink)]">{money(t.valor)}</b>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-[var(--muted)]">Status do lançamento:</span>
+            <b>{t.status}</b>
+          </div>
+        </div>
+
+        {/* Status atual da NFS-e */}
+        {t.nfse_status && (
+          <div className={cx('p-3 rounded-xl border text-xs', isAuthorized ? 'bg-[var(--in)]/10 border-[var(--in)]/30' : t.nfse_status === 'ERROR' ? 'bg-[var(--bad)]/10 border-[var(--bad)]/30' : 'bg-[var(--warn)]/10 border-[var(--warn)]/30')}>
+            <div className="flex items-center justify-between">
+              <span className="font-bold flex items-center gap-1.5">
+                {isAuthorized ? <Check className="w-4 h-4 text-[var(--in)]" /> : t.nfse_status === 'ERROR' ? <AlertTriangle className="w-4 h-4 text-[var(--bad)]" /> : <RefreshCw className="w-4 h-4 animate-spin text-[var(--warn)]" />}
+                Status da NFS-e: {t.nfse_status}
+              </span>
+              {t.nfse_numero && <span className="font-extrabold text-sm">Nota #{t.nfse_numero}</span>}
+            </div>
+            {t.nfse_rps_numero && <p className="mt-1 text-[var(--muted)]">RPS Nº: {t.nfse_rps_numero}</p>}
+            {t.nfse_erro && <p className="mt-1.5 text-[var(--bad)] font-semibold">{t.nfse_erro}</p>}
+
+            {/* Links para download */}
+            {(t.nfse_pdf_url || t.nfse_xml_url) && (
+              <div className="mt-3 flex gap-2 pt-2 border-t border-[var(--line)]">
+                {t.nfse_pdf_url && (
+                  <a
+                    href={t.nfse_pdf_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-[var(--ink)] text-[var(--surface)] hover:opacity-90"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Baixar PDF da Nota
+                  </a>
+                )}
+                {t.nfse_xml_url && (
+                  <a
+                    href={t.nfse_xml_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[var(--surface)] border border-[var(--line)] hover:bg-[var(--line-2)]"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Baixar XML
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Formulário para emissão caso não esteja autorizada */}
+        {!isAuthorized && (
+          <form id="nfse-form" onSubmit={handleIssue} className="space-y-3">
+            <Field label="Descrição dos Serviços prestados" hint="Aparecerá no corpo da nota fiscal impressa">
+              <Textarea rows={3} required value={data.serviceDescription} onChange={set('serviceDescription')} />
+            </Field>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Código do Serviço Municipal" hint="Ex: 1.07 ou código LC 116">
+                <Input value={data.municipalServiceCode} onChange={set('municipalServiceCode')} placeholder="Ex: 1.07" />
+              </Field>
+              <Field label="Discriminação Municipal">
+                <Input value={data.municipalServiceName} onChange={set('municipalServiceName')} placeholder="Ex: Serviços de TI" />
+              </Field>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3 items-center">
+              <Field label="Alíquota ISS (%)">
+                <Input type="number" step="0.01" min="0" max="100" value={data.iss} onChange={set('iss')} placeholder="Ex: 2.00 ou 5.00" />
+              </Field>
+              <div className="pt-3">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold">
+                  <input type="checkbox" checked={!!data.retainIss} onChange={set('retainIss')} className="w-4 h-4 rounded border-[var(--line)]" />
+                  Reter ISS na fonte
+                </label>
+              </div>
+            </div>
+
+            <Field label="Observações complementares">
+              <Input value={data.observations} onChange={set('observations')} placeholder="Informações adicionais para o tomador" />
+            </Field>
+
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[var(--ink-2)] pt-1">
+              <input type="checkbox" checked={!!data.authorizeNow} onChange={set('authorizeNow')} className="w-4 h-4 rounded border-[var(--line)]" />
+              Transmitir e autorizar imediatamente junto à prefeitura
+            </label>
+          </form>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function BatchInvoiceModal({ ids, count, total, onClose, onSuccess }) {
+  const compQ = useBizQuery('/company');
+  const comp = compQ.data || {};
+  const [desc, setDesc] = useState('');
+  const [code, setCode] = useState('');
+  const [iss, setIss] = useState('');
+  const [retain, setRetain] = useState(false);
+
+  const act = useBizMutation((body) => biz('/transactions/batch/invoice', { method: 'POST', body }), {
+    success: (r) => `${r.successCount} nota(s) fiscal(is) enviada(s) ao Asaas!${r.errorCount ? ` (${r.errorCount} falha(s))` : ''}`,
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+  });
+
+  const municipalCode = code || comp.municipal_service_code || '';
+  const serviceDesc = desc || comp.nfse_descricao_padrao || '';
+  const issRate = iss !== '' ? iss : (comp.nfse_aliquota_iss !== undefined && comp.nfse_aliquota_iss !== null ? String(comp.nfse_aliquota_iss) : '');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    act.mutate({
+      ids,
+      serviceDescription: serviceDesc || undefined,
+      municipalServiceCode: municipalCode || undefined,
+      iss: issRate !== '' ? Number(issRate) : undefined,
+      retainIss: retain,
+    });
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Emitir NFS-e em lote via Asaas"
+      description={`Será solicitada a emissão de Nota Fiscal de Serviços para ${count} contas a receber selecionadas (Total: ${money(total)}).`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            type="submit"
+            form="batch-nfse-form"
+            variant="primary"
+            icon={FileText}
+            loading={act.isPending}
+          >
+            Emitir notas fiscais ({count})
+          </Button>
+        </>
+      }
+    >
+      <form id="batch-nfse-form" onSubmit={handleSubmit} className="space-y-4">
+        <p className="text-xs text-[var(--ink-2)]">
+          As notas serão criadas e vinculadas aos respectivos clientes cadastrados no Asaas. Certifique-se de que os clientes possuem CPF ou CNPJ preenchidos.
+        </p>
+
+        <Field label="Descrição dos Serviços (opcional)" hint="Se vazio, utiliza a descrição de cada lançamento ou padrão da empresa">
+          <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={comp.nfse_descricao_padrao || 'Ex: Prestação de serviços...'} />
+        </Field>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="Código do Serviço Municipal" hint="Código municipal (ex: 1.07)">
+            <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder={comp.municipal_service_code || '1.07'} />
+          </Field>
+          <Field label="Alíquota ISS (%)">
+            <Input type="number" step="0.01" value={iss} onChange={(e) => setIss(e.target.value)} placeholder={String(comp.nfse_aliquota_iss ?? '2.00')} />
+          </Field>
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold">
+          <input type="checkbox" checked={retain} onChange={(e) => setRetain(e.target.checked)} className="w-4 h-4 rounded" />
+          Reter ISS na fonte em todas as emissões
+        </label>
+      </form>
+    </Modal>
+  );
+}
+
 

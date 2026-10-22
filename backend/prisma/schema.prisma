@@ -553,6 +553,13 @@ model BizCompany {
   asaas_ambiente         String   @default("SANDBOX") // SANDBOX | PRODUCAO
   asaas_webhook_token    String?
   asaas_conta_financeira_id String? // BizBankAccount que recebe os créditos do Asaas
+  // NFS-e (Asaas)
+  municipal_service_code String? // Código de serviço municipal na prefeitura
+  municipal_service_name String?
+  nfse_descricao_padrao  String? // Descrição padrão dos serviços prestados
+  nfse_emitir_ao_receber Boolean  @default(false)
+  nfse_reter_iss         Boolean  @default(false)
+  nfse_aliquota_iss      Decimal? @db.Decimal(6, 3)
   // Propostas
   proposta_validade_dias Int      @default(15)
   proposta_termos        String?  // condições gerais padrão
@@ -924,6 +931,14 @@ model BizTransaction {
   asaas_invoice_url String?
   asaas_boleto_url String?
   asaas_pix_payload String?
+  // NFS-e (Asaas)
+  asaas_invoice_id String?
+  nfse_numero      String?
+  nfse_status      String?   // SCHEDULED | SYNCHRONIZED | AUTHORIZED | PROCESSING_CANCELLATION | CANCELED | ERROR
+  nfse_pdf_url     String?
+  nfse_xml_url     String?
+  nfse_rps_numero  String?
+  nfse_erro        String?
   observacoes      String?
   anexo_url        String?
   origem           String    @default("MANUAL") // MANUAL | CONTRATO | ASAAS | MCP | IMPORTACAO

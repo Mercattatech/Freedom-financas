@@ -36,7 +36,7 @@ const diasAtraso = (t) => {
 function buildWhere(ctx, q = {}) {
   const where = { company_id: ctx.companyId };
   if (q.tipo) where.tipo = q.tipo;
-  for (const f of ['client_id', 'supplier_id', 'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'origem']) {
+  for (const f of ['client_id', 'supplier_id', 'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'origem', 'nfse_status']) {
     if (q[f]) where[f] = q[f];
   }
   const campoData = q.por === 'competencia' ? 'competencia' : q.por === 'pagamento' ? 'data_pagamento' : 'vencimento';
@@ -59,6 +59,7 @@ function buildWhere(ctx, q = {}) {
     where.OR = [
       { descricao: { contains: String(q.q), mode: 'insensitive' } },
       { documento: { contains: String(q.q), mode: 'insensitive' } },
+      { nfse_numero: { contains: String(q.q), mode: 'insensitive' } },
       { client: { nome: { contains: String(q.q), mode: 'insensitive' } } },
       { supplier: { nome: { contains: String(q.q), mode: 'insensitive' } } },
     ];
@@ -322,4 +323,151 @@ async function charge(ctx, id, { forma_pagamento } = {}) {
   return decorate(upd);
 }
 
-module.exports = { list, get, create, update, pay, reopen, cancel, remove, charge, ensureAsaasCustomer, decorate, situacao, saldoDe, INCLUDE, buildWhere };
+/** Baixa em massa */
+async function batchPay(ctx, { ids, data_pagamento, bank_account_id, informar_asaas = true }) {
+  if (!Array.isArray(ids) || !ids.length) throw badRequest('Nenhum lançamento selecionado');
+  const datePay = toDate(data_pagamento) || today();
+  if (bank_account_id) await assertRefs(ctx, { bank_account_id });
+
+  const rows = await prisma.bizTransaction.findMany({
+    where: { id: { in: ids }, company_id: ctx.companyId, status: { in: ['PENDENTE', 'PARCIAL'] } },
+  });
+
+  let asaasClient = null;
+  if (informar_asaas) {
+    try {
+      const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+      if (company?.asaas_api_key) asaasClient = new AsaasClient(company);
+    } catch { /* sem asaas */ }
+  }
+
+  let count = 0;
+  for (const t of rows) {
+    const saldo = saldoDe(t);
+    await prisma.bizTransaction.update({
+      where: { id: t.id },
+      data: {
+        valor_pago: round2(num(t.valor) + num(t.juros_multa) - num(t.desconto)),
+        status: 'PAGO',
+        data_pagamento: datePay,
+        bank_account_id: bank_account_id || t.bank_account_id || null,
+      },
+    });
+
+    if (asaasClient && t.asaas_payment_id && t.tipo === 'RECEITA' && !['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(t.asaas_status)) {
+      try {
+        await asaasClient.receiveInCash(t.asaas_payment_id, { paymentDate: datePay, value: saldo });
+        await prisma.bizTransaction.update({ where: { id: t.id }, data: { asaas_status: 'RECEIVED_IN_CASH' } });
+      } catch (err) {
+        console.warn(`[batchPay] receiveInCash failed for ${t.id}:`, err.message);
+      }
+    }
+    count++;
+  }
+
+  await audit(ctx, 'pay', 'lancamento', null, `Baixa em massa realizada em ${count} lançamentos`);
+  return { ok: true, count };
+}
+
+/** Cancelamento em massa */
+async function batchCancel(ctx, { ids, motivo, cancelar_asaas = false }) {
+  if (!Array.isArray(ids) || !ids.length) throw badRequest('Nenhum lançamento selecionado');
+
+  const rows = await prisma.bizTransaction.findMany({
+    where: { id: { in: ids }, company_id: ctx.companyId, status: { in: ['PENDENTE', 'PARCIAL'] } },
+  });
+
+  let asaasClient = null;
+  if (cancelar_asaas) {
+    try {
+      const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+      if (company?.asaas_api_key) asaasClient = new AsaasClient(company);
+    } catch { /* sem asaas */ }
+  }
+
+  let count = 0;
+  for (const t of rows) {
+    await prisma.bizTransaction.update({
+      where: { id: t.id },
+      data: {
+        status: 'CANCELADO',
+        observacoes: motivo ? (t.observacoes ? `${t.observacoes}\nMotivo cancelamento: ${motivo}` : `Motivo cancelamento: ${motivo}`) : t.observacoes,
+      },
+    });
+
+    if (asaasClient && t.asaas_payment_id && t.tipo === 'RECEITA' && ['PENDENTE', 'A_VENCER', 'OVERDUE'].includes(t.asaas_status)) {
+      try {
+        await asaasClient.deletePayment(t.asaas_payment_id);
+      } catch (err) {
+        console.warn(`[batchCancel] deletePayment failed for ${t.id}:`, err.message);
+      }
+    }
+    count++;
+  }
+
+  await audit(ctx, 'cancel', 'lancamento', null, `Cancelamento em massa de ${count} lançamentos`, { motivo });
+  return { ok: true, count };
+}
+
+/** Exclusão em massa (para não pagos) */
+async function batchDelete(ctx, { ids }) {
+  if (!Array.isArray(ids) || !ids.length) throw badRequest('Nenhum lançamento selecionado');
+
+  const res = await prisma.bizTransaction.deleteMany({
+    where: {
+      id: { in: ids },
+      company_id: ctx.companyId,
+      status: { not: 'PAGO' },
+    },
+  });
+
+  await audit(ctx, 'delete', 'lancamento', null, `Exclusão em massa de ${res.count} lançamentos`);
+  return { ok: true, count: res.count };
+}
+
+/** Atualização em massa de campos (categoria, centro de custo, vencimento, conta bancária) */
+async function batchUpdate(ctx, { ids, patch = {} }) {
+  if (!Array.isArray(ids) || !ids.length) throw badRequest('Nenhum lançamento selecionado');
+
+  const allowed = ['account_id', 'cost_center_id', 'bank_account_id', 'forma_pagamento'];
+  const updateData = {};
+  for (const f of allowed) {
+    if (patch[f] !== undefined) updateData[f] = patch[f] || null;
+  }
+  if (patch.vencimento) updateData.vencimento = toDate(patch.vencimento);
+  if (patch.competencia) updateData.competencia = startOfMonth(toDate(patch.competencia));
+
+  if (!Object.keys(updateData).length) throw badRequest('Nenhum campo para atualizar informado');
+
+  await assertRefs(ctx, updateData);
+
+  const res = await prisma.bizTransaction.updateMany({
+    where: { id: { in: ids }, company_id: ctx.companyId },
+    data: updateData,
+  });
+
+  await audit(ctx, 'update', 'lancamento', null, `Atualização em massa em ${res.count} lançamentos`, Object.keys(updateData));
+  return { ok: true, count: res.count };
+}
+
+module.exports = {
+  list,
+  get,
+  create,
+  update,
+  pay,
+  reopen,
+  cancel,
+  remove,
+  charge,
+  batchPay,
+  batchCancel,
+  batchDelete,
+  batchUpdate,
+  ensureAsaasCustomer,
+  decorate,
+  situacao,
+  saldoDe,
+  INCLUDE,
+  buildWhere,
+};
