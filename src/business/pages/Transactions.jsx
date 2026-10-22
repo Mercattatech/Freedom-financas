@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -20,6 +20,7 @@ export default function Transactions({ tipo }) {
   const [nfseFilter, setNfseFilter] = useState('');
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
+  const [editingClient, setEditingClient] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [billModal, setBillModal] = useState(false);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -167,7 +168,37 @@ export default function Transactions({ tipo }) {
                         <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
                         {t.contract && <div className="text-xs text-[var(--muted)]">Contrato #{t.contract.numero}</div>}
                       </td>
-                      <td className="text-[var(--ink-2)]">{t.client?.nome_fantasia || t.client?.nome || t.supplier?.nome || '—'}</td>
+                      <td className="text-[var(--ink-2)] min-w-[170px]">
+                        {t.client ? (
+                          <div>
+                            <div className="flex items-center gap-1.5 group">
+                              <span className="font-semibold text-[var(--ink)] text-sm">{t.client.nome_fantasia || t.client.nome}</span>
+                              {write && (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingClient(t.client)}
+                                  className="p-1 rounded hover:bg-[var(--line-2)] text-[var(--muted)] hover:text-[var(--ink)] transition-colors opacity-70 group-hover:opacity-100"
+                                  title="Editar dados do cliente (CPF/CNPJ, endereço, etc.)"
+                                  aria-label={`Editar ${t.client.nome}`}
+                                >
+                                  <Pencil className="w-3 h-3 text-[var(--result)]" />
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] text-[var(--muted)] mt-0.5">
+                              {t.client.documento ? (
+                                <span>Doc: {t.client.documento}</span>
+                              ) : (
+                                <span className="text-[var(--bad)] font-semibold flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" /> Sem CPF/CNPJ
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          t.supplier?.nome || '—'
+                        )}
+                      </td>
                       <td className="text-xs text-[var(--ink-2)] min-w-[140px]">{t.account ? t.account.nome : <span className="text-[var(--warn)] font-semibold">Sem classificação</span>}{t.costCenter && <div className="text-[var(--muted)]">{t.costCenter.nome}</div>}</td>
                       <td className="r"><Money value={t.valor} /></td>
                       <td className="r"><Money value={['PAGO', 'CANCELADO'].includes(t.status) ? 0 : t.saldo} /></td>
@@ -273,12 +304,13 @@ export default function Transactions({ tipo }) {
       {paying && <PayModal t={paying} onClose={() => setPaying(null)} />}
       {linkModal && <PaymentLinkModal onClose={() => setLinkModal(false)} />}
       {billModal && <PayBillModal onClose={() => setBillModal(false)} />}
-      {invoiceModal && <InvoiceModal t={invoiceModal} onClose={() => setInvoiceModal(null)} onRefresh={() => list.refetch()} />}
+      {invoiceModal && <InvoiceModal t={invoiceModal} onClose={() => setInvoiceModal(null)} onRefresh={() => list.refetch()} onEditClient={(cl) => setEditingClient(cl)} />}
       {batchInvoiceModal && <BatchInvoiceModal ids={selectedIds} count={selectedIds.length} total={totalSelected} onClose={() => setBatchInvoiceModal(false)} onSuccess={() => { setSelectedIds([]); list.refetch(); }} />}
       {batchPayModal && <BatchPayModal ids={selectedIds} count={selectedIds.length} total={totalSelected} tipo={tipo} onClose={() => setBatchPayModal(false)} onSuccess={() => setSelectedIds([])} />}
       {batchUpdateModal && <BatchUpdateModal ids={selectedIds} count={selectedIds.length} tipo={tipo} onClose={() => setBatchUpdateModal(false)} onSuccess={() => setSelectedIds([])} />}
       {batchCancelModal && <BatchCancelModal ids={selectedIds} count={selectedIds.length} onClose={() => setBatchCancelModal(false)} onSuccess={() => setSelectedIds([])} />}
       {batchDeleteModal && <BatchDeleteModal ids={selectedIds} count={selectedIds.length} onClose={() => setBatchDeleteModal(false)} onSuccess={() => setSelectedIds([])} />}
+      {editingClient && <ClientQuickEditModal client={editingClient} onClose={() => setEditingClient(null)} onSaved={() => list.refetch()} />}
     </>
   );
 }
@@ -778,7 +810,7 @@ function BatchDeleteModal({ ids, count, onClose, onSuccess }) {
   );
 }
 
-function InvoiceModal({ t, onClose, onRefresh }) {
+function InvoiceModal({ t, onClose, onRefresh, onEditClient }) {
   const compQ = useBizQuery('/company');
   const [f, setF] = useState(null);
 
@@ -843,13 +875,16 @@ function InvoiceModal({ t, onClose, onRefresh }) {
 
   const isAuthorized = t.nfse_status === 'AUTHORIZED';
   const isPending = ['SCHEDULED', 'SYNCHRONIZED', 'PROCESSING_CANCELLATION'].includes(t.nfse_status);
+  const clientEnd = typeof t.client?.endereco === 'object' && t.client?.endereco ? t.client.endereco : {};
+  const hasClientAddress = !!(clientEnd.logradouro || clientEnd.rua);
+  const hasClientDoc = !!t.client?.documento;
 
   return (
     <Modal
       open
       onClose={onClose}
       title="Nota Fiscal de Serviços (NFS-e) — Asaas"
-      width={600}
+      width={640}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
@@ -870,27 +905,77 @@ function InvoiceModal({ t, onClose, onRefresh }) {
       }
     >
       <div className="space-y-4">
-        {/* Resumo do Lançamento */}
-        <div className="p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] text-xs space-y-1">
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">Lançamento:</span>
+        {/* Tomador do Serviço (Cliente) com botão de edição direta */}
+        <div className="p-3.5 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-extrabold text-[var(--ink)] flex items-center gap-1.5">
+              Tomador do Serviço (Cliente)
+            </span>
+            {t.client && onEditClient && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                icon={Pencil}
+                onClick={() => onEditClient(t.client)}
+              >
+                Editar dados do cliente
+              </Button>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-2.5 pt-1">
+            <div>
+              <span className="text-[var(--muted)] block">Nome / Razão Social:</span>
+              <b className="text-[var(--ink)] text-sm">{t.client?.nome || '—'}</b>
+            </div>
+            <div>
+              <span className="text-[var(--muted)] block">CPF / CNPJ:</span>
+              {hasClientDoc ? (
+                <span className="font-bold text-[var(--in)] text-sm">{t.client.documento}</span>
+              ) : (
+                <span className="text-[var(--bad)] font-bold flex items-center gap-1 text-xs">
+                  <AlertTriangle className="w-3.5 h-3.5" /> Não cadastrado (Obrigatório)
+                </span>
+              )}
+            </div>
+            <div>
+              <span className="text-[var(--muted)] block">E-mail:</span>
+              <span>{t.client?.email || <span className="text-[var(--muted)] italic">Não informado</span>}</span>
+            </div>
+            <div>
+              <span className="text-[var(--muted)] block">Endereço:</span>
+              <span>
+                {hasClientAddress ? (
+                  `${clientEnd.logradouro || clientEnd.rua}, ${clientEnd.numero || 'S/N'}${clientEnd.cidade ? ` - ${clientEnd.cidade}/${clientEnd.uf || ''}` : ''}`
+                ) : (
+                  <span className="text-[var(--warn)] font-semibold flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Endereço incompleto
+                  </span>
+                )}
+              </span>
+            </div>
+          </div>
+
+          {(!hasClientDoc || !hasClientAddress) && (
+            <div className="p-2.5 rounded-lg bg-[var(--warn)]/10 border border-[var(--warn)]/30 text-[11px] text-[var(--warn)] font-medium flex items-start gap-2 mt-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <b>Atenção para evitar recusa da prefeitura:</b> CPF/CNPJ válido e endereço completo são exigidos para autorizar a nota. Clique em <b>"Editar dados do cliente"</b> acima para preencher antes de emitir.
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Resumo financeiro */}
+        <div className="p-3 bg-[var(--surface)] rounded-xl border border-[var(--line)] text-xs flex justify-between items-center">
+          <div>
+            <span className="text-[var(--muted)] block">Lançamento</span>
             <b className="text-[var(--ink)]">{t.descricao}</b>
           </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">Cliente:</span>
-            <b className="text-[var(--ink)]">{t.client?.nome || '—'}</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">CPF / CNPJ do Tomador:</span>
-            <b className="text-[var(--ink)]">{t.client?.documento || <span className="text-[var(--bad)] font-semibold">Não cadastrado</span>}</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">Valor do serviço:</span>
-            <b className="text-[var(--ink)]">{money(t.valor)}</b>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-[var(--muted)]">Status do lançamento:</span>
-            <b>{t.status}</b>
+          <div className="text-right">
+            <span className="text-[var(--muted)] block">Valor do serviço</span>
+            <b className="text-[var(--ink)] text-sm">{money(t.valor)}</b>
           </div>
         </div>
 
@@ -1052,6 +1137,180 @@ function BatchInvoiceModal({ ids, count, total, onClose, onSuccess }) {
           <input type="checkbox" checked={retain} onChange={(e) => setRetain(e.target.checked)} className="w-4 h-4 rounded" />
           Reter ISS na fonte em todas as emissões
         </label>
+      </form>
+    </Modal>
+  );
+}
+
+function ClientQuickEditModal({ client, onClose, onSaved }) {
+  const [f, setF] = useState(() => {
+    const end = typeof client.endereco === 'object' && client.endereco ? client.endereco : {};
+    return {
+      tipo_pessoa: client.tipo_pessoa || (client.documento && String(client.documento).length > 11 ? 'PJ' : 'PF'),
+      nome: client.nome || '',
+      nome_fantasia: client.nome_fantasia || '',
+      documento: client.documento || '',
+      email: client.email || '',
+      telefone: client.telefone || '',
+      cep: end.cep || '',
+      logradouro: end.logradouro || end.rua || '',
+      numero: end.numero || '',
+      complemento: end.complemento || '',
+      bairro: end.bairro || '',
+      cidade: end.cidade || '',
+      uf: end.uf || '',
+    };
+  });
+  const [searchingCep, setSearchingCep] = useState(false);
+
+  const save = useBizMutation((body) => biz(`/clients/${client.id}`, { method: 'PUT', body }), {
+    success: 'Dados do cliente atualizados e sincronizados com o Asaas!',
+    onSuccess: (updated) => {
+      onSaved?.(updated);
+      onClose();
+    },
+  });
+
+  const set = (k) => (e) => setF((prev) => ({ ...prev, [k]: e.target.value }));
+
+  const handleBuscarCep = async () => {
+    const cleanCep = String(f.cep || '').replace(/\D/g, '');
+    if (cleanCep.length !== 8) {
+      toast.error('Informe um CEP válido com 8 dígitos');
+      return;
+    }
+    setSearchingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+      const data = await res.json();
+      if (data.erro) {
+        toast.error('CEP não encontrado');
+      } else {
+        setF((prev) => ({
+          ...prev,
+          logradouro: data.logradouro || prev.logradouro,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          uf: data.uf || prev.uf,
+        }));
+        toast.success('Endereço preenchido!');
+      }
+    } catch {
+      toast.error('Erro ao consultar CEP');
+    } finally {
+      setSearchingCep(false);
+    }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const payload = {
+      tipo_pessoa: f.tipo_pessoa,
+      nome: f.nome,
+      nome_fantasia: f.nome_fantasia || null,
+      documento: f.documento ? String(f.documento).replace(/\D/g, '') : null,
+      email: f.email || null,
+      telefone: f.telefone || null,
+      endereco: {
+        cep: f.cep ? String(f.cep).replace(/\D/g, '') : null,
+        logradouro: f.logradouro || null,
+        numero: f.numero || null,
+        complemento: f.complemento || null,
+        bairro: f.bairro || null,
+        cidade: f.cidade || null,
+        uf: f.uf ? f.uf.toUpperCase() : null,
+      },
+    };
+    save.mutate(payload);
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Editar dados do cliente: ${client.nome}`}
+      description="Atualize CPF/CNPJ, e-mail e endereço completo do tomador para garantir a autorização da Nota Fiscal."
+      width={640}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="client-quick-edit-form" variant="primary" loading={save.isPending}>
+            Salvar e sincronizar
+          </Button>
+        </>
+      }
+    >
+      <form id="client-quick-edit-form" onSubmit={handleSubmit} className="space-y-4">
+        <div className="grid sm:grid-cols-3 gap-3">
+          <Field label="Tipo de pessoa">
+            <Select value={f.tipo_pessoa} onChange={set('tipo_pessoa')}>
+              <option value="PJ">Pessoa Jurídica (PJ)</option>
+              <option value="PF">Pessoa Física (PF)</option>
+            </Select>
+          </Field>
+          <Field label={f.tipo_pessoa === 'PJ' ? 'CNPJ' : 'CPF'} hint="Obrigatório para emissão de NFS-e" className="sm:col-span-2">
+            <Input
+              required
+              value={f.documento}
+              onChange={set('documento')}
+              placeholder={f.tipo_pessoa === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'}
+            />
+          </Field>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={f.tipo_pessoa === 'PJ' ? 'Razão Social' : 'Nome completo'}>
+            <Input required value={f.nome} onChange={set('nome')} />
+          </Field>
+          <Field label="Nome Fantasia">
+            <Input value={f.nome_fantasia} onChange={set('nome_fantasia')} placeholder="Opcional" />
+          </Field>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label="E-mail" hint="Receberá a NFS-e e cobranças">
+            <Input type="email" value={f.email} onChange={set('email')} placeholder="financeiro@cliente.com" />
+          </Field>
+          <Field label="Telefone / WhatsApp">
+            <Input value={f.telefone} onChange={set('telefone')} placeholder="(11) 90000-0000" />
+          </Field>
+        </div>
+
+        <div className="pt-2 border-t border-[var(--line)]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-bold text-xs text-[var(--ink)]">Endereço do Tomador (Exigido pela prefeitura)</span>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-3">
+            <Field label="CEP">
+              <div className="flex gap-1.5">
+                <Input value={f.cep} onChange={set('cep')} placeholder="00000-000" />
+                <Button type="button" variant="secondary" loading={searchingCep} onClick={handleBuscarCep}>Buscar</Button>
+              </div>
+            </Field>
+            <Field label="Logradouro / Rua" className="sm:col-span-2">
+              <Input value={f.logradouro} onChange={set('logradouro')} placeholder="Rua, Av..." />
+            </Field>
+          </div>
+
+          <div className="grid sm:grid-cols-4 gap-3 mt-3">
+            <Field label="Número">
+              <Input value={f.numero} onChange={set('numero')} placeholder="123" />
+            </Field>
+            <Field label="Complemento">
+              <Input value={f.complemento} onChange={set('complemento')} placeholder="Sala 1" />
+            </Field>
+            <Field label="Bairro">
+              <Input value={f.bairro} onChange={set('bairro')} placeholder="Centro" />
+            </Field>
+            <Field label="Cidade / UF">
+              <div className="flex gap-1">
+                <Input value={f.cidade} onChange={set('cidade')} placeholder="Cidade" className="flex-1" />
+                <Input value={f.uf} onChange={set('uf')} placeholder="UF" maxLength={2} className="w-12 text-center uppercase" />
+              </div>
+            </Field>
+          </div>
+        </div>
       </form>
     </Modal>
   );

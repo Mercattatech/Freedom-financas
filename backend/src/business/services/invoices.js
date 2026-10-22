@@ -7,11 +7,18 @@ const { round2 } = require('../lib/money');
 const { toDate, today } = require('../lib/dates');
 
 async function ensureAsaasCustomer(company, client) {
-  if (client.asaas_customer_id) return client.asaas_customer_id;
+  const asaas = new AsaasClient(company);
+  if (client.asaas_customer_id) {
+    try {
+      await asaas.updateCustomer(client.asaas_customer_id, client);
+    } catch (e) {
+      console.error('[biz asaas updateCustomer]', e.message);
+    }
+    return client.asaas_customer_id;
+  }
   if (!client.documento) {
     throw badRequest(`Cadastre o CPF/CNPJ do cliente "${client.nome}" para emitir Nota Fiscal.`);
   }
-  const asaas = new AsaasClient(company);
   const created = await asaas.createCustomer(client);
   await prisma.bizClient.update({
     where: { id: client.id },

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle, RefreshCw, DownloadCloud, Check } from 'lucide-react';
+import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle, RefreshCw, DownloadCloud, Check, FileText, Info, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -9,7 +9,17 @@ import Registry, { COST_CENTERS, BANKS, RegistryForm } from './Registry';
 import { GRUPOS_DRE } from '../components/lookups';
 import { date, money } from '../format';
 
-const TABS = [['empresa', 'Empresa e marca'], ['asaas', 'Asaas'], ['ia', 'Integração com IA (MCP)'], ['contas', 'Plano de contas'], ['centros', 'Centros de custo'], ['bancos', 'Contas financeiras'], ['usuarios', 'Usuários'], ['auditoria', 'Auditoria']];
+const TABS = [
+  ['empresa', 'Empresa e marca'],
+  ['asaas', 'Asaas'],
+  ['nfse', 'Nota Fiscal (NFS-e)'],
+  ['ia', 'Integração com IA (MCP)'],
+  ['contas', 'Plano de contas'],
+  ['centros', 'Centros de custo'],
+  ['bancos', 'Contas financeiras'],
+  ['usuarios', 'Usuários'],
+  ['auditoria', 'Auditoria'],
+];
 
 export default function Settings() {
   const [sp, setSp] = useSearchParams();
@@ -20,6 +30,7 @@ export default function Settings() {
       <Tabs tabs={TABS} value={tab} onChange={(k) => setSp({ aba: k })} />
       {tab === 'empresa' && <CompanyTab />}
       {tab === 'asaas' && <AsaasTab />}
+      {tab === 'nfse' && <NfseTab />}
       {tab === 'ia' && <McpTab />}
       {tab === 'contas' && <AccountsTab />}
       {tab === 'centros' && <div className="[&_h1]:text-lg"><Registry config={COST_CENTERS} /></div>}
@@ -205,16 +216,19 @@ function AsaasTab() {
   );
 }
 
-function NfseConfigPanel() {
+function NfseTab() {
   const compQ = useBizQuery('/company');
+  const asaasQ = useBizQuery('/company/asaas/status');
   const [f, setF] = useState(null);
   const save = useBizMutation((body) => biz('/company', { method: 'PUT', body }), {
-    success: 'Configurações de NFS-e salvas',
+    success: 'Parâmetros fiscais da NFS-e salvos com sucesso!',
     onSuccess: () => compQ.refetch(),
   });
 
-  if (compQ.isLoading) return <Loading />;
+  if (compQ.isLoading || asaasQ.isLoading) return <Loading />;
   const c = f || compQ.data || {};
+  const s = asaasQ.data || {};
+
   const set = (k) => (e) => {
     const val = e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e;
     setF({ ...c, [k]: val });
@@ -232,47 +246,161 @@ function NfseConfigPanel() {
     });
   };
 
+  const hasAsaas = s.conectado;
+  const hasCode = !!c.municipal_service_code;
+  const hasName = !!c.municipal_service_name;
+  const hasIss = c.nfse_aliquota_iss !== undefined && c.nfse_aliquota_iss !== null && c.nfse_aliquota_iss !== '';
+  const isReady = hasAsaas && hasCode && hasIss;
+
   return (
-    <Panel title="Emissão de Notas Fiscais de Serviços (NFS-e)">
-      <form onSubmit={handleSave} className="space-y-4">
-        <p className="text-sm text-[var(--ink-2)]">
-          Configure os dados fiscais municipais cadastrados na prefeitura junto ao Asaas para emissão de Notas Fiscais de Serviço (NFS-e) diretamente pelas Contas a Receber.
-        </p>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          <Field label="Código do Serviço Municipal" hint="Código de tributação do serviço (ex: 1.07 ou 0107)">
-            <Input value={c.municipal_service_code || ''} onChange={set('municipal_service_code')} placeholder="Ex: 1.07" />
-          </Field>
-          <Field label="Nome / Discriminação do Serviço" hint="Nome do serviço conforme tabela municipal">
-            <Input value={c.municipal_service_name || ''} onChange={set('municipal_service_name')} placeholder="Ex: Suporte técnico e consultoria em TI" />
-          </Field>
-        </div>
-
-        <Field label="Descrição Padrão dos Serviços" hint="Texto pré-preenchido no corpo da nota fiscal (pode ser ajustado antes de cada emissão)">
-          <Textarea rows={3} value={c.nfse_descricao_padrao || ''} onChange={set('nfse_descricao_padrao')} placeholder="Prestação de serviços de consultoria e assessoria conforme contrato..." />
-        </Field>
-
-        <div className="grid sm:grid-cols-2 gap-4 items-center">
-          <Field label="Alíquota ISS Padrão (%)" hint="Percentual de ISS aplicado no município">
-            <Input type="number" step="0.01" min="0" max="100" value={c.nfse_aliquota_iss ?? ''} onChange={set('nfse_aliquota_iss')} placeholder="Ex: 2.00 ou 5.00" />
-          </Field>
-          <div className="space-y-3 pt-2">
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
-              <input type="checkbox" checked={!!c.nfse_reter_iss} onChange={set('nfse_reter_iss')} className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]" />
-              Reter ISS na fonte por padrão
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
-              <input type="checkbox" checked={!!c.nfse_emitir_ao_receber} onChange={set('nfse_emitir_ao_receber')} className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]" />
-              Emitir NFS-e automaticamente ao receber pagamentos
-            </label>
+    <div className="space-y-6">
+      {/* Cards de Prontidão / Prevenção de Erros */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className={cx('p-4 rounded-xl border', hasAsaas ? 'bg-[var(--in)]/5 border-[var(--in)]/30' : 'bg-[var(--bad)]/5 border-[var(--bad)]/30')}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[var(--muted)] font-bold">1. Conexão Asaas</span>
+            {hasAsaas ? <CheckCircle2 className="w-4 h-4 text-[var(--in)]" /> : <AlertTriangle className="w-4 h-4 text-[var(--bad)]" />}
           </div>
+          <p className="font-extrabold text-sm">{hasAsaas ? 'Conectado e Ativo' : 'Não conectado'}</p>
+          <span className="text-[11px] text-[var(--muted)]">{hasAsaas ? `Ambiente: ${s.ambiente}` : 'Configure na aba Asaas'}</span>
         </div>
 
-        <div className="pt-2">
-          <Button type="submit" loading={save.isPending}>Salvar parâmetros da NFS-e</Button>
+        <div className={cx('p-4 rounded-xl border', hasCode ? 'bg-[var(--in)]/5 border-[var(--in)]/30' : 'bg-[var(--warn)]/5 border-[var(--warn)]/30')}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[var(--muted)] font-bold">2. Código Municipal</span>
+            {hasCode ? <CheckCircle2 className="w-4 h-4 text-[var(--in)]" /> : <AlertTriangle className="w-4 h-4 text-[var(--warn)]" />}
+          </div>
+          <p className="font-extrabold text-sm">{c.municipal_service_code || 'Não informado'}</p>
+          <span className="text-[11px] text-[var(--muted)]">{hasCode ? 'Tributação definida' : 'Obrigatório para emissão'}</span>
         </div>
-      </form>
-    </Panel>
+
+        <div className={cx('p-4 rounded-xl border', hasIss ? 'bg-[var(--in)]/5 border-[var(--in)]/30' : 'bg-[var(--warn)]/5 border-[var(--warn)]/30')}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[var(--muted)] font-bold">3. Alíquota de ISS</span>
+            {hasIss ? <CheckCircle2 className="w-4 h-4 text-[var(--in)]" /> : <AlertTriangle className="w-4 h-4 text-[var(--warn)]" />}
+          </div>
+          <p className="font-extrabold text-sm">{hasIss ? `${c.nfse_aliquota_iss}%` : 'Não informada'}</p>
+          <span className="text-[11px] text-[var(--muted)]">{c.nfse_reter_iss ? 'Com retenção na fonte' : 'Sem retenção'}</span>
+        </div>
+
+        <div className="p-4 rounded-xl border bg-[var(--surface)] border-[var(--line)]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-[var(--muted)] font-bold">4. Emissão Automática</span>
+            <CheckCheck className="w-4 h-4 text-[var(--result)]" />
+          </div>
+          <p className="font-extrabold text-sm">{c.nfse_emitir_ao_receber ? 'Ativada' : 'Manual sob demanda'}</p>
+          <span className="text-[11px] text-[var(--muted)]">{c.nfse_emitir_ao_receber ? 'Emite ao receber pagamento' : 'Você decide quando emitir'}</span>
+        </div>
+      </div>
+
+      <div className="grid xl:grid-cols-[1fr_380px] gap-6 items-start">
+        {/* Formulário Principal */}
+        <Panel title="Configuração dos Dados Fiscais de NFS-e">
+          <form onSubmit={handleSave} className="space-y-4">
+            <p className="text-sm text-[var(--ink-2)]">
+              Preencha os dados cadastrados na prefeitura do seu município para que as notas fiscais sejam emitidas e autorizadas sem rejeição pela prefeitura via Asaas.
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Código do Serviço Municipal" hint="Código do serviço na tabela da prefeitura (ex: 1.07 ou 0107)">
+                <Input
+                  required
+                  value={c.municipal_service_code || ''}
+                  onChange={set('municipal_service_code')}
+                  placeholder="Ex: 1.07"
+                />
+              </Field>
+              <Field label="Nome / Discriminação do Serviço" hint="Nome do serviço conforme alvará municipal">
+                <Input
+                  value={c.municipal_service_name || ''}
+                  onChange={set('municipal_service_name')}
+                  placeholder="Ex: Suporte técnico e consultoria em TI"
+                />
+              </Field>
+            </div>
+
+            <Field label="Descrição Padrão dos Serviços" hint="Texto padrão impresso no corpo de cada nota fiscal (pode ser personalizado na hora da emissão)">
+              <Textarea
+                rows={3}
+                value={c.nfse_descricao_padrao || ''}
+                onChange={set('nfse_descricao_padrao')}
+                placeholder="Prestação de serviços profissionais conforme contrato de prestação de serviços..."
+              />
+            </Field>
+
+            <div className="grid sm:grid-cols-2 gap-4 items-center">
+              <Field label="Alíquota Padrão de ISS (%)" hint="Alíquota municipal de ISS (ex: 2.00 a 5.00)">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  value={c.nfse_aliquota_iss ?? ''}
+                  onChange={set('nfse_aliquota_iss')}
+                  placeholder="Ex: 2.00"
+                />
+              </Field>
+              <div className="space-y-3 pt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
+                  <input
+                    type="checkbox"
+                    checked={!!c.nfse_reter_iss}
+                    onChange={set('nfse_reter_iss')}
+                    className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]"
+                  />
+                  Reter ISS na fonte por padrão
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm font-semibold text-[var(--ink)]">
+                  <input
+                    type="checkbox"
+                    checked={!!c.nfse_emitir_ao_receber}
+                    onChange={set('nfse_emitir_ao_receber')}
+                    className="w-4 h-4 rounded border-[var(--line)] accent-[var(--result)]"
+                  />
+                  Emitir NFS-e automaticamente ao receber pagamento
+                </label>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <Button type="submit" loading={save.isPending}>Salvar configurações de NFS-e</Button>
+            </div>
+          </form>
+        </Panel>
+
+        {/* Guia de Prevenção de Erros */}
+        <Panel title="Prevenção de Erros de Emissão">
+          <div className="space-y-4 text-xs text-[var(--ink-2)] leading-relaxed">
+            <div className="p-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]">
+              <b className="text-sm font-bold text-[var(--ink)] block mb-1 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-[var(--result)]" /> 1. Certificado no Asaas
+              </b>
+              <p>
+                No painel web do Asaas (<b>Configurações › Notas Fiscais</b>), certifique-se de que a emissão municipal está ativada com o seu <b>Certificado Digital A1</b> ou credenciais da prefeitura.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]">
+              <b className="text-sm font-bold text-[var(--ink)] block mb-1 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-[var(--result)]" /> 2. Dados do Cliente (Tomador)
+              </b>
+              <p>
+                A prefeitura exige obrigatoriamente <b>CPF ou CNPJ válido</b> e <b>endereço completo</b> (com CEP, logradouro e número). Você pode editar esses dados a qualquer momento diretamente na tabela de Contas a Receber.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]">
+              <b className="text-sm font-bold text-[var(--ink)] block mb-1 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-[var(--result)]" /> 3. Código do Serviço
+              </b>
+              <p>
+                O código de serviço deve corresponder exatamente a uma atividade habilitada no alvará/inscrição municipal do seu CNPJ, evitando recusa pelo sistema tributário da sua cidade.
+              </p>
+            </div>
+          </div>
+        </Panel>
+      </div>
+    </div>
   );
 }
 

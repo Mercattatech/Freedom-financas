@@ -25,8 +25,42 @@ const { mcpHandler } = require('../mcp/server');
 const baseUrl = (req) => process.env.APP_URL || req.headers.origin || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
 
+let dbSynced = false;
+async function ensureDbColumns() {
+  if (dbSynced) return;
+  try {
+    await prisma.$executeRawUnsafe(`
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_code" TEXT;
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_name" TEXT;
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_descricao_padrao" TEXT;
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
+
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_status" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_pdf_url" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_xml_url" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_rps_numero" TEXT;
+      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_erro" TEXT;
+    `);
+    dbSynced = true;
+  } catch (err) {
+    console.error('[biz ensureDbColumns]', err.message);
+  }
+}
+
 function createBizRouter() {
   const r = express.Router();
+
+  // Garante colunas de migração no banco de dados
+  r.use(async (req, res, next) => {
+    if (!dbSynced) {
+      await ensureDbColumns();
+    }
+    next();
+  });
 
   // Decimals → Number em todas as respostas
   r.use((req, res, next) => {

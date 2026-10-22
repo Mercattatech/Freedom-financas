@@ -96,6 +96,17 @@ async function update(ctx, entity, id, data) {
   let payload = pick(data, d.fields);
   if (d.normalize) payload = d.normalize(payload);
   const item = await prisma[d.model].update({ where: { id }, data: payload });
+  if (entity === 'clients' && item.asaas_customer_id) {
+    try {
+      const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+      if (company?.asaas_api_key) {
+        const { AsaasClient } = require('./asaas');
+        await new AsaasClient(company).updateCustomer(item.asaas_customer_id, item);
+      }
+    } catch (e) {
+      console.error('[biz registry asaas updateCustomer]', e.message);
+    }
+  }
   await audit(ctx, 'update', d.label, id, `${d.label} ${item.nome || ''} atualizado`, Object.keys(payload));
   return item;
 }

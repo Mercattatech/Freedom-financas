@@ -45,19 +45,35 @@ class AsaasClient {
 
   // Clientes
   createCustomer(c) {
+    const end = typeof c.endereco === 'object' && c.endereco ? c.endereco : {};
     return this.request('POST', '/customers', {
       name: c.nome,
-      cpfCnpj: c.documento || undefined,
+      cpfCnpj: c.documento ? String(c.documento).replace(/\D/g, '') : undefined,
       email: c.email || undefined,
+      phone: c.telefone ? String(c.telefone).replace(/\D/g, '') : undefined,
       mobilePhone: c.telefone ? String(c.telefone).replace(/\D/g, '') : undefined,
+      address: end.logradouro || end.rua || undefined,
+      addressNumber: end.numero || undefined,
+      complement: end.complemento || undefined,
+      province: end.bairro || undefined,
+      postalCode: end.cep ? String(end.cep).replace(/\D/g, '') : undefined,
       externalReference: `client:${c.id}`,
       notificationDisabled: false,
     });
   }
   updateCustomer(id, c) {
+    const end = typeof c.endereco === 'object' && c.endereco ? c.endereco : {};
     return this.request('PUT', `/customers/${id}`, {
-      name: c.nome, cpfCnpj: c.documento || undefined, email: c.email || undefined,
+      name: c.nome,
+      cpfCnpj: c.documento ? String(c.documento).replace(/\D/g, '') : undefined,
+      email: c.email || undefined,
+      phone: c.telefone ? String(c.telefone).replace(/\D/g, '') : undefined,
       mobilePhone: c.telefone ? String(c.telefone).replace(/\D/g, '') : undefined,
+      address: end.logradouro || end.rua || undefined,
+      addressNumber: end.numero || undefined,
+      complement: end.complemento || undefined,
+      province: end.bairro || undefined,
+      postalCode: end.cep ? String(end.cep).replace(/\D/g, '') : undefined,
     });
   }
 
