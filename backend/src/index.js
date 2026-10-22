@@ -43,6 +43,11 @@ app.use('/api/webhooks/whatsapp', require('./routes/whatsapp'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/assistant', require('./routes/assistant'));
 
+// Módulo Freedom Empresas (financeiro empresarial multiempresa + Asaas + MCP)
+// Precisa vir antes do router genérico, que captura /api/:entity
+const { createBizRouter } = require('./business/routes');
+app.use('/api/biz', createBizRouter());
+
 // Catch-all generic routes for other entities (FinancialMonths, Incomes, etc)
 const genericRouter = require('./routes/generic');
 app.use('/api', genericRouter());
@@ -73,6 +78,15 @@ if (require.main === module) {
   // Inicia cron de inadimplência
   const { startDelinquencyCron } = require('./jobs/delinquencyCron');
   startDelinquencyCron();
+
+  // Rotina diária do módulo Empresas (títulos de contratos e expiração de propostas)
+  try {
+    const cron = require('node-cron');
+    const { runDaily } = require('./business/jobs/daily');
+    cron.schedule('15 6 * * *', () => runDaily().then((r) => console.log('[biz] rotina diária', r)).catch(console.error), { timezone: 'America/Sao_Paulo' });
+  } catch (e) {
+    console.error('[biz] cron não iniciado:', e.message);
+  }
 
   app.listen(port, () => {
     console.log(`🚀 Freedom Backend Server running on http://localhost:${port}`);

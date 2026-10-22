@@ -1,0 +1,20 @@
+{
+  "name": "whatsapp-official-api-kit",
+  "version": "1.0.0",
+  "description": "Kit reutilizável para conectar a WhatsApp Cloud API (oficial, Meta) em qualquer sistema Node/Express.",
+  "main": "src/index.js",
+  "scripts": {
+    "test-connection": "node scripts/test-connection.js",
+    "example": "node example/server.js"
+  },
+  "peerDependencies": {
+    "express": ">=4"
+  },
+  "devDependencies": {
+    "dotenv": "^17.3.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "ISC"
+}

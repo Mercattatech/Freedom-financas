@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from './utils';
 import { useAuth } from '@/lib/AuthContext';
-import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff, Bell, User } from 'lucide-react';
+import { Home, Receipt, PieChart, CreditCard, TrendingUp, Users, Tag, PiggyBank, BarChart3, Target, LineChart, LogOut, Menu, X, Settings, ShieldAlert, Loader2, Moon, Sun, HelpCircle, Eye, EyeOff, Bell, User, Briefcase } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -77,6 +77,7 @@ export default function Layout({ children, currentPageName }) {
 
   const navItems = [
     { name: 'Dashboard', icon: Home, path: 'Dashboard' },
+    { name: 'Empresas', icon: Briefcase, path: 'empresas' },
     { name: 'Transações', icon: Receipt, path: 'Transactions' },
     { name: 'Relatórios', icon: PieChart, path: 'Reports' },
     { name: 'Orçamento', icon: PieChart, path: 'Budget' },

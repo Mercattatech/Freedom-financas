@@ -1,0 +1,66 @@
+/* Freedom Empresas — tokens e base visual (escopo .biz) */
+.biz {
+  --ink: #172033;
+  --ink-2: #3B4558;
+  --muted: #6B7385;
+  --line: #E3E6EB;
+  --line-2: #EEF0F3;
+  --paper: #F5F6F8;
+  --surface: #FFFFFF;
+  --in: #008F73;        /* entradas / receita / positivo */
+  --in-soft: #E3F4EF;
+  --out: #CC5A14;       /* saídas / despesa */
+  --out-soft: #FBEDE3;
+  --result: #5161D6;    /* resultado / saldo / ação principal */
+  --result-soft: #ECEEFC;
+  --warn: #B54708;
+  --warn-soft: #FEF4E6;
+  --bad: #B42318;
+  --bad-soft: #FDECEA;
+  --side: #172033;
+  --side-ink: #C9CFDB;
+  --side-active: #26314A;
+  font-family: 'Manrope', 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+.dark .biz {
+  --ink: #E8EBF1;
+  --ink-2: #C3C9D5;
+  --muted: #8C94A6;
+  --line: #2A3242;
+  --line-2: #222937;
+  --paper: #10141C;
+  --surface: #171C26;
+  --in: #1FA386;
+  --in-soft: #12302B;
+  --out: #D0692A;
+  --out-soft: #35231A;
+  --result: #6F80EC;
+  --result-soft: #22284A;
+  --warn: #E59A3C;
+  --warn-soft: #33281A;
+  --bad: #F07167;
+  --bad-soft: #3A1E1E;
+  --side: #0B0F16;
+  --side-ink: #A9B1C2;
+  --side-active: #1B2233;
+}
+.biz .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.biz h1, .biz h2, .biz h3 { letter-spacing: -0.01em; }
+.biz :focus-visible { outline: 2px solid var(--result); outline-offset: 2px; border-radius: 6px; }
+.biz input, .biz select, .biz textarea { font-family: inherit; }
+.biz .tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.biz .tbl th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12.5px; padding: 10px 10px; border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 1; }
+.biz .tbl td { padding: 11px 10px; border-bottom: 1px solid var(--line-2); vertical-align: middle; }
+.biz .tbl tr:last-child td { border-bottom: 0; }
+.biz .tbl tbody tr:hover td { background: color-mix(in srgb, var(--paper) 70%, transparent); }
+.biz .tbl .r { text-align: right; }
+@media (prefers-reduced-motion: reduce) { .biz * { transition: none !important; animation: none !important; } }
+@media print {
+  .biz-noprint { display: none !important; }
+  .biz { background: #fff; }
+}
+/* Itens de grid não devem estourar a largura por causa de tabelas largas */
+.biz main .grid > * { min-width: 0; }

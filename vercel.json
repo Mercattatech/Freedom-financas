@@ -11,5 +11,11 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/biz/jobs/daily",
+      "schedule": "15 9 * * *"
+    }
   ]
 }

@@ -522,3 +522,522 @@ model VslCms {
   created_date         DateTime  @default(now())
   updated_date         DateTime  @updatedAt
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FREEDOM EMPRESAS — módulo de gestão financeira empresarial (multiempresa)
+//  Toda entidade abaixo é isolada por company_id (tenant).
+//  Valores monetários: Decimal(14,2). Quantidades/custos unitários: Decimal(14,4).
+// ═══════════════════════════════════════════════════════════════════════════
+
+model BizCompany {
+  id                     String   @id @default(uuid())
+  razao_social           String
+  nome_fantasia          String?
+  cnpj                   String?
+  email                  String?
+  telefone               String?
+  site                   String?
+  endereco               Json?    // { logradouro, numero, bairro, cidade, uf, cep }
+  // Marca (usada em propostas e documentos)
+  logo_url               String?
+  cor_primaria           String   @default("#0F172A")
+  cor_secundaria         String   @default("#10B981")
+  // Fiscal / gerencial
+  regime_tributario      String   @default("SIMPLES") // MEI | SIMPLES | PRESUMIDO | REAL
+  aliquota_imposto       Decimal  @default(6) @db.Decimal(6, 3) // % sobre faturamento (deduções)
+  aliquota_comissao      Decimal  @default(0) @db.Decimal(6, 3) // % padrão de comissão comercial
+  meta_margem_contrato   Decimal  @default(40) @db.Decimal(6, 3) // % alvo de margem de contribuição
+  rateio_overhead        String   @default("RECEITA") // RECEITA | HORAS | NENHUM
+  // Asaas
+  asaas_api_key          String?  // criptografada (AES-256-GCM)
+  asaas_ambiente         String   @default("SANDBOX") // SANDBOX | PRODUCAO
+  asaas_webhook_token    String?
+  asaas_conta_financeira_id String? // BizBankAccount que recebe os créditos do Asaas
+  // Propostas
+  proposta_validade_dias Int      @default(15)
+  proposta_termos        String?  // condições gerais padrão
+  proposta_rodape        String?
+  // SaaS
+  plano                  String   @default("TRIAL") // TRIAL | ESSENCIAL | PRO | ENTERPRISE
+  ativo                  Boolean  @default(true)
+  created_by             String   // user id
+  created_date           DateTime @default(now())
+  updated_date           DateTime @updatedAt
+
+  members        BizCompanyMember[]
+  clients        BizClient[]
+  suppliers      BizSupplier[]
+  accounts       BizChartAccount[]
+  costCenters    BizCostCenter[]
+  bankAccounts   BizBankAccount[]
+  products       BizProduct[]
+  stockMoves     BizStockMovement[]
+  proposals      BizProposal[]
+  contracts      BizContract[]
+  transactions   BizTransaction[]
+  teamMembers    BizTeamMember[]
+  timeEntries    BizTimeEntry[]
+  apiKeys        BizApiKey[]
+  auditLogs      BizAuditLog[]
+  webhookEvents  BizWebhookEvent[]
+
+  @@map("biz_company")
+}
+
+model BizCompanyMember {
+  id           String   @id @default(uuid())
+  company_id   String
+  user_id      String
+  email        String
+  papel        String   @default("ADMIN") // OWNER | ADMIN | FINANCEIRO | COMERCIAL | OPERACIONAL | LEITURA
+  ativo        Boolean  @default(true)
+  created_date DateTime @default(now())
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@unique([company_id, user_id])
+  @@index([user_id])
+  @@map("biz_company_member")
+}
+
+model BizClient {
+  id                String   @id @default(uuid())
+  company_id        String
+  tipo_pessoa       String   @default("PJ") // PF | PJ
+  nome              String   // razão social ou nome
+  nome_fantasia     String?
+  documento         String?  // CPF/CNPJ só dígitos
+  email             String?
+  telefone          String?
+  contato_nome      String?
+  endereco          Json?
+  segmento          String?
+  origem            String?  // indicação, tráfego, outbound...
+  status            String   @default("ATIVO") // LEAD | ATIVO | INATIVO | CHURN
+  tags              String[] @default([])
+  observacoes       String?
+  asaas_customer_id String?
+  created_date      DateTime @default(now())
+  updated_date      DateTime @updatedAt
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  proposals    BizProposal[]
+  contracts    BizContract[]
+  transactions BizTransaction[]
+
+  @@index([company_id, status])
+  @@map("biz_client")
+}
+
+model BizSupplier {
+  id           String   @id @default(uuid())
+  company_id   String
+  tipo_pessoa  String   @default("PJ")
+  nome         String
+  documento    String?
+  email        String?
+  telefone     String?
+  categoria    String?  // freelancer, mídia, software, impostos, aluguel...
+  chave_pix    String?
+  dados_bancarios Json?
+  observacoes  String?
+  ativo        Boolean  @default(true)
+  created_date DateTime @default(now())
+  updated_date DateTime @updatedAt
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  transactions BizTransaction[]
+
+  @@index([company_id])
+  @@map("biz_supplier")
+}
+
+// Plano de contas gerencial — o campo grupo_dre define a linha da DRE
+model BizChartAccount {
+  id           String   @id @default(uuid())
+  company_id   String
+  codigo       String   // ex.: 3.1.01
+  nome         String
+  natureza     String   // RECEITA | DESPESA
+  grupo_dre    String   // RECEITA_BRUTA | DEDUCOES | CUSTOS | DESPESAS_PESSOAL | DESPESAS_ADMINISTRATIVAS | DESPESAS_COMERCIAIS | RECEITAS_FINANCEIRAS | DESPESAS_FINANCEIRAS | IMPOSTOS_LUCRO | NAO_OPERACIONAL
+  custo_direto Boolean  @default(false) // entra no custo do contrato quando vinculado
+  fixa         Boolean  @default(false) // despesa fixa (ponto de equilíbrio)
+  ativo        Boolean  @default(true)
+  sistema      Boolean  @default(false) // conta padrão criada pelo sistema
+  created_date DateTime @default(now())
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  transactions BizTransaction[]
+  products     BizProduct[]
+
+  @@unique([company_id, codigo])
+  @@map("biz_chart_account")
+}
+
+model BizCostCenter {
+  id           String   @id @default(uuid())
+  company_id   String
+  codigo       String?
+  nome         String
+  tipo         String   @default("OPERACIONAL") // OPERACIONAL | ADMINISTRATIVO | COMERCIAL | PROJETO
+  orcamento_mensal Decimal? @db.Decimal(14, 2)
+  ativo        Boolean  @default(true)
+  created_date DateTime @default(now())
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  transactions BizTransaction[]
+  contracts    BizContract[]
+
+  @@map("biz_cost_center")
+}
+
+model BizBankAccount {
+  id            String   @id @default(uuid())
+  company_id    String
+  nome          String
+  tipo          String   @default("CORRENTE") // CORRENTE | CAIXA | ASAAS | INVESTIMENTO | CARTAO
+  banco         String?
+  saldo_inicial Decimal  @default(0) @db.Decimal(14, 2)
+  data_saldo_inicial DateTime @default(now())
+  ativo         Boolean  @default(true)
+  created_date  DateTime @default(now())
+
+  company       BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  transactions  BizTransaction[]
+
+  @@map("biz_bank_account")
+}
+
+model BizProduct {
+  id               String   @id @default(uuid())
+  company_id       String
+  tipo             String   @default("SERVICO") // PRODUTO | SERVICO
+  codigo           String?  // SKU
+  nome             String
+  descricao        String?
+  categoria        String?
+  unidade          String   @default("UN") // UN | H | MES | PROJETO | KG...
+  preco_venda      Decimal  @default(0) @db.Decimal(14, 2)
+  custo_unitario   Decimal  @default(0) @db.Decimal(14, 4) // custo médio (produto) ou custo direto estimado (serviço)
+  horas_estimadas  Decimal  @default(0) @db.Decimal(10, 2) // por unidade/ciclo — serviços
+  cobranca         String   @default("UNICA") // UNICA | RECORRENTE
+  periodicidade    String?  // MENSAL | TRIMESTRAL | SEMESTRAL | ANUAL
+  controla_estoque Boolean  @default(false)
+  estoque_atual    Decimal  @default(0) @db.Decimal(14, 4)
+  estoque_minimo   Decimal  @default(0) @db.Decimal(14, 4)
+  account_id       String?  // conta de receita
+  ativo            Boolean  @default(true)
+  created_date     DateTime @default(now())
+  updated_date     DateTime @updatedAt
+
+  company       BizCompany        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  account       BizChartAccount?  @relation(fields: [account_id], references: [id])
+  stockMoves    BizStockMovement[]
+  proposalItems BizProposalItem[]
+  contractItems BizContractItem[]
+
+  @@index([company_id, tipo])
+  @@map("biz_product")
+}
+
+model BizStockMovement {
+  id             String   @id @default(uuid())
+  company_id     String
+  product_id     String
+  tipo           String   // ENTRADA | SAIDA | AJUSTE
+  quantidade     Decimal  @db.Decimal(14, 4) // sempre positiva; AJUSTE define o saldo final
+  custo_unitario Decimal  @default(0) @db.Decimal(14, 4)
+  saldo_apos     Decimal  @db.Decimal(14, 4)
+  custo_medio_apos Decimal @db.Decimal(14, 4)
+  contract_id    String?  // consumo alocado a um contrato (custo direto)
+  transaction_id String?
+  documento      String?
+  observacao     String?
+  data           DateTime @default(now())
+  created_by     String?
+  created_date   DateTime @default(now())
+
+  company        BizCompany   @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  product        BizProduct   @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  contract       BizContract? @relation(fields: [contract_id], references: [id])
+
+  @@index([company_id, product_id])
+  @@map("biz_stock_movement")
+}
+
+model BizProposal {
+  id                String   @id @default(uuid())
+  company_id        String
+  numero            Int
+  client_id         String?
+  // prospect sem cadastro
+  prospect_nome     String?
+  prospect_email    String?
+  prospect_empresa  String?
+  titulo            String
+  introducao        String?  // texto/markdown de abertura
+  escopo            String?  // markdown — entregáveis
+  condicoes         String?  // markdown — condições comerciais
+  capa_url          String?
+  status            String   @default("RASCUNHO") // RASCUNHO | ENVIADA | VISUALIZADA | ACEITA | RECUSADA | EXPIRADA
+  validade          DateTime?
+  desconto_percent  Decimal  @default(0) @db.Decimal(6, 3)
+  total_unico       Decimal  @default(0) @db.Decimal(14, 2)
+  total_recorrente  Decimal  @default(0) @db.Decimal(14, 2) // por mês
+  custo_estimado    Decimal  @default(0) @db.Decimal(14, 2)
+  prazo_contrato_meses Int?
+  public_token      String   @unique
+  visualizacoes     Int      @default(0)
+  ultima_visualizacao DateTime?
+  enviada_em        DateTime?
+  respondida_em     DateTime?
+  aceite_nome       String?
+  aceite_documento  String?
+  aceite_ip         String?
+  motivo_recusa     String?
+  contract_id       String?  // contrato gerado no aceite
+  responsavel       String?
+  created_by        String?
+  created_date      DateTime @default(now())
+  updated_date      DateTime @updatedAt
+
+  company      BizCompany        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  client       BizClient?        @relation(fields: [client_id], references: [id])
+  items        BizProposalItem[]
+
+  @@unique([company_id, numero])
+  @@map("biz_proposal")
+}
+
+model BizProposalItem {
+  id             String   @id @default(uuid())
+  proposal_id    String
+  product_id     String?
+  descricao      String
+  detalhes       String?
+  quantidade     Decimal  @default(1) @db.Decimal(14, 4)
+  preco_unitario Decimal  @db.Decimal(14, 2)
+  desconto_percent Decimal @default(0) @db.Decimal(6, 3)
+  custo_unitario Decimal  @default(0) @db.Decimal(14, 4)
+  cobranca       String   @default("UNICA") // UNICA | RECORRENTE
+  ordem          Int      @default(0)
+
+  proposal       BizProposal @relation(fields: [proposal_id], references: [id], onDelete: Cascade)
+  product        BizProduct? @relation(fields: [product_id], references: [id])
+
+  @@map("biz_proposal_item")
+}
+
+model BizContract {
+  id                 String   @id @default(uuid())
+  company_id         String
+  numero             Int
+  client_id          String
+  proposal_id        String?
+  titulo             String
+  tipo               String   // RECORRENTE | PONTUAL
+  status             String   @default("ATIVO") // RASCUNHO | ATIVO | PAUSADO | ENCERRADO | CANCELADO
+  data_inicio        DateTime
+  data_fim           DateTime?
+  periodicidade      String   @default("MENSAL") // MENSAL | TRIMESTRAL | SEMESTRAL | ANUAL (recorrente)
+  dia_vencimento     Int      @default(10)
+  valor_recorrente   Decimal  @default(0) @db.Decimal(14, 2) // por ciclo
+  valor_pontual      Decimal  @default(0) @db.Decimal(14, 2) // setup / projeto
+  parcelas_pontual   Int      @default(1)
+  custo_previsto_mensal Decimal @default(0) @db.Decimal(14, 2) // custo direto orçado por mês
+  horas_previstas_mensal Decimal @default(0) @db.Decimal(10, 2)
+  aliquota_imposto   Decimal? @db.Decimal(6, 3) // sobrescreve a da empresa
+  comissao_percent   Decimal? @db.Decimal(6, 3)
+  forma_pagamento    String   @default("BOLETO") // BOLETO | PIX | CARTAO | UNDEFINED | MANUAL
+  cobrar_via_asaas   Boolean  @default(true)
+  asaas_subscription_id String?
+  indice_reajuste    String?  // IPCA | IGPM | FIXO
+  data_reajuste      DateTime?
+  cost_center_id     String?
+  responsavel        String?
+  motivo_cancelamento String?
+  cancelado_em       DateTime?
+  observacoes        String?
+  created_by         String?
+  created_date       DateTime @default(now())
+  updated_date       DateTime @updatedAt
+
+  company       BizCompany        @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  client        BizClient         @relation(fields: [client_id], references: [id])
+  costCenter    BizCostCenter?    @relation(fields: [cost_center_id], references: [id])
+  items         BizContractItem[]
+  transactions  BizTransaction[]
+  timeEntries   BizTimeEntry[]
+  stockMoves    BizStockMovement[]
+
+  @@unique([company_id, numero])
+  @@index([company_id, status])
+  @@map("biz_contract")
+}
+
+model BizContractItem {
+  id             String   @id @default(uuid())
+  contract_id    String
+  product_id     String?
+  descricao      String
+  quantidade     Decimal  @default(1) @db.Decimal(14, 4)
+  preco_unitario Decimal  @db.Decimal(14, 2)
+  custo_unitario Decimal  @default(0) @db.Decimal(14, 4)
+  cobranca       String   @default("RECORRENTE") // UNICA | RECORRENTE
+
+  contract       BizContract @relation(fields: [contract_id], references: [id], onDelete: Cascade)
+  product        BizProduct? @relation(fields: [product_id], references: [id])
+
+  @@map("biz_contract_item")
+}
+
+// Lançamento financeiro único: contas a receber (RECEITA) e contas a pagar (DESPESA)
+model BizTransaction {
+  id               String    @id @default(uuid())
+  company_id       String
+  tipo             String    // RECEITA | DESPESA
+  descricao        String
+  valor            Decimal   @db.Decimal(14, 2) // valor original
+  valor_pago       Decimal   @default(0) @db.Decimal(14, 2)
+  juros_multa      Decimal   @default(0) @db.Decimal(14, 2)
+  desconto         Decimal   @default(0) @db.Decimal(14, 2)
+  taxa             Decimal   @default(0) @db.Decimal(14, 2) // tarifa do gateway (Asaas)
+  vencimento       DateTime
+  competencia      DateTime  // 1º dia do mês de competência (regime de competência)
+  data_pagamento   DateTime?
+  status           String    @default("PENDENTE") // PENDENTE | PARCIAL | PAGO | CANCELADO  (VENCIDO é derivado)
+  forma_pagamento  String?   // BOLETO | PIX | CARTAO | TRANSFERENCIA | DINHEIRO | DEBITO_AUTOMATICO
+  documento        String?   // nº NF, boleto...
+  parcela          Int?
+  total_parcelas   Int?
+  grupo_parcelas   String?   // agrupa parcelas/recorrências
+  recorrente       Boolean   @default(false)
+  client_id        String?
+  supplier_id      String?
+  contract_id      String?
+  account_id       String?
+  cost_center_id   String?
+  bank_account_id  String?
+  // Asaas
+  asaas_payment_id String?   @unique
+  asaas_status     String?
+  asaas_invoice_url String?
+  asaas_boleto_url String?
+  asaas_pix_payload String?
+  observacoes      String?
+  anexo_url        String?
+  origem           String    @default("MANUAL") // MANUAL | CONTRATO | ASAAS | MCP | IMPORTACAO
+  created_by       String?
+  created_date     DateTime  @default(now())
+  updated_date     DateTime  @updatedAt
+
+  company      BizCompany       @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  client       BizClient?       @relation(fields: [client_id], references: [id])
+  supplier     BizSupplier?     @relation(fields: [supplier_id], references: [id])
+  contract     BizContract?     @relation(fields: [contract_id], references: [id])
+  account      BizChartAccount? @relation(fields: [account_id], references: [id])
+  costCenter   BizCostCenter?   @relation(fields: [cost_center_id], references: [id])
+  bankAccount  BizBankAccount?  @relation(fields: [bank_account_id], references: [id])
+
+  @@index([company_id, tipo, status])
+  @@index([company_id, vencimento])
+  @@index([company_id, competencia])
+  @@index([contract_id])
+  @@map("biz_transaction")
+}
+
+// Equipe (diretos e indiretos) — base do custo/hora usado na margem dos contratos
+model BizTeamMember {
+  id             String   @id @default(uuid())
+  company_id     String
+  nome           String
+  email          String?
+  cargo          String?
+  vinculo        String   @default("CLT") // CLT | PJ | FREELANCER | SOCIO
+  custo_mensal   Decimal  @default(0) @db.Decimal(14, 2) // salário + encargos + benefícios
+  horas_mes      Decimal  @default(160) @db.Decimal(10, 2)
+  custo_hora_override Decimal? @db.Decimal(14, 4) // freelancer por hora
+  produtivo      Boolean  @default(true) // atua em contratos (direto) ou é estrutura (indireto)
+  ativo          Boolean  @default(true)
+  created_date   DateTime @default(now())
+  updated_date   DateTime @updatedAt
+
+  company      BizCompany     @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  timeEntries  BizTimeEntry[]
+
+  @@map("biz_team_member")
+}
+
+model BizTimeEntry {
+  id             String   @id @default(uuid())
+  company_id     String
+  team_member_id String
+  contract_id    String?
+  data           DateTime
+  horas          Decimal  @db.Decimal(10, 2)
+  custo_hora     Decimal  @db.Decimal(14, 4) // congelado no lançamento
+  descricao      String?
+  created_by     String?
+  created_date   DateTime @default(now())
+
+  company      BizCompany    @relation(fields: [company_id], references: [id], onDelete: Cascade)
+  teamMember   BizTeamMember @relation(fields: [team_member_id], references: [id], onDelete: Cascade)
+  contract     BizContract?  @relation(fields: [contract_id], references: [id])
+
+  @@index([company_id, data])
+  @@index([contract_id])
+  @@map("biz_time_entry")
+}
+
+// Chaves de API — usadas pelo servidor MCP e integrações
+model BizApiKey {
+  id            String    @id @default(uuid())
+  company_id    String
+  nome          String
+  prefixo       String    // primeiros caracteres visíveis
+  hash          String    @unique // sha256 da chave
+  escopo        String    @default("ESCRITA") // LEITURA | ESCRITA
+  user_id       String    // quem criou — ações são executadas em nome dele
+  ultimo_uso    DateTime?
+  revogada      Boolean   @default(false)
+  created_date  DateTime  @default(now())
+
+  company       BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@map("biz_api_key")
+}
+
+model BizAuditLog {
+  id           String   @id @default(uuid())
+  company_id   String
+  user_id      String?
+  origem       String   @default("APP") // APP | MCP | WEBHOOK | SISTEMA | PUBLICO
+  acao         String   // create | update | delete | pay | send | accept ...
+  entidade     String
+  entidade_id  String?
+  resumo       String?
+  dados        Json?
+  created_date DateTime @default(now())
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@index([company_id, created_date])
+  @@map("biz_audit_log")
+}
+
+model BizWebhookEvent {
+  id           String   @id @default(uuid())
+  company_id   String
+  provedor     String   @default("ASAAS")
+  evento_id    String
+  evento       String
+  payload      Json
+  status       String   @default("RECEBIDO") // RECEBIDO | PROCESSADO | IGNORADO | ERRO
+  erro         String?
+  created_date DateTime @default(now())
+
+  company      BizCompany @relation(fields: [company_id], references: [id], onDelete: Cascade)
+
+  @@unique([provedor, evento_id])
+  @@map("biz_webhook_event")
+}

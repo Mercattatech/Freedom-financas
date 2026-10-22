@@ -133,9 +133,45 @@ const AuthenticatedApp = () => {
 };
 
 
+import React, { Suspense, lazy } from 'react';
 import { ThemeProvider } from 'next-themes';
 import GtmInjector from '@/components/GtmInjector';
 import AIAssistant from '@/components/AIAssistant';
+
+// Módulo Freedom Empresas (carregado sob demanda)
+const BizApp = lazy(() => import('@/business/BizApp'));
+const PublicProposal = lazy(() => import('@/business/pages/PublicProposal'));
+const isBizPath = (p) => p.toLowerCase().startsWith('/empresas') || p.startsWith('/proposta/');
+
+const RouteFallback = () => <div className="min-h-screen" />;
+
+function RootRoutes() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/proposta/')) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <Routes><Route path="/proposta/:token" element={<PublicProposal />} /></Routes>
+      </Suspense>
+    );
+  }
+  if (location.pathname.toLowerCase().startsWith('/empresas')) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/empresas/*" element={<ProtectedRoute pageName="Empresas"><BizApp /></ProtectedRoute>} />
+          <Route path="/Empresas/*" element={<Navigate to="/empresas" replace />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+  return <AuthenticatedApp />;
+}
+
+// O assistente de vendas não aparece no módulo Empresas nem nas propostas públicas
+function AssistantGate() {
+  const location = useLocation();
+  return isBizPath(location.pathname) ? null : <AIAssistant />;
+}
 
 function App() {
 
@@ -145,9 +181,9 @@ function App() {
         <QueryClientProvider client={queryClientInstance}>
           <Router>
             <GtmInjector />
-            <AIAssistant />
+            <AssistantGate />
             <NavigationTracker />
-            <AuthenticatedApp />
+            <RootRoutes />
           </Router>
           <Toaster />
         </QueryClientProvider>
