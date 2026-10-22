@@ -4,7 +4,7 @@ import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle,
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
-import { PageHeader, Tabs, Panel, Field, Input, Select, Textarea, Button, Loading, StatusPill, Modal, Empty } from '../components/ui';
+import { PageHeader, Tabs, Panel, Field, Input, Select, Textarea, Button, Loading, StatusPill, Modal, Empty, cx } from '../components/ui';
 import Registry, { COST_CENTERS, BANKS, RegistryForm } from './Registry';
 import { GRUPOS_DRE } from '../components/lookups';
 import { date, money } from '../format';
