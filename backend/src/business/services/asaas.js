@@ -111,6 +111,57 @@ class AsaasClient {
   deleteSubscription(id) { return this.request('DELETE', `/subscriptions/${id}`); }
   listSubscriptionPayments(id) { return this.request('GET', `/subscriptions/${id}/payments?limit=100`); }
 
+  // Listagens com paginação
+  listCustomers({ offset = 0, limit = 100 } = {}) {
+    return this.request('GET', `/customers?offset=${offset}&limit=${limit}`);
+  }
+
+  listSubscriptions({ offset = 0, limit = 100 } = {}) {
+    return this.request('GET', `/subscriptions?offset=${offset}&limit=${limit}`);
+  }
+
+  listPayments({ offset = 0, limit = 100, status } = {}) {
+    const qs = status ? `&status=${status}` : '';
+    return this.request('GET', `/payments?offset=${offset}&limit=${limit}${qs}`);
+  }
+
+  // Links de Pagamento
+  listPaymentLinks({ offset = 0, limit = 100 } = {}) {
+    return this.request('GET', `/paymentLinks?offset=${offset}&limit=${limit}`);
+  }
+
+  createPaymentLink({ name, description, value, billingType = 'UNDEFINED', chargeType = 'DETACHED', dueDateLimitDays = 10, maxInstallmentCount = 1, endDate }) {
+    return this.request('POST', '/paymentLinks', {
+      name,
+      description: description?.slice(0, 500),
+      value: value ? round2(value) : undefined,
+      billingType: BILLING[billingType] || 'UNDEFINED',
+      chargeType: chargeType || 'DETACHED',
+      dueDateLimitDays: dueDateLimitDays ? parseInt(dueDateLimitDays, 10) : undefined,
+      maxInstallmentCount: maxInstallmentCount ? parseInt(maxInstallmentCount, 10) : 1,
+      ...(endDate && { endDate: ymd(endDate) }),
+    });
+  }
+
+  // Pagamento de contas / boletos via Asaas (Contas a Pagar)
+  listBills({ offset = 0, limit = 100 } = {}) {
+    return this.request('GET', `/bill?offset=${offset}&limit=${limit}`);
+  }
+
+  createBill({ identificationField, scheduleDate, description, value, dueDate }) {
+    return this.request('POST', '/bill', {
+      identificationField: String(identificationField).replace(/\D/g, ''),
+      scheduleDate: scheduleDate ? ymd(scheduleDate) : undefined,
+      description: description?.slice(0, 500),
+      value: round2(value),
+      dueDate: dueDate ? ymd(dueDate) : undefined,
+    });
+  }
+
+  cancelBill(id) {
+    return this.request('POST', `/bill/${id}/cancel`);
+  }
+
   // Conta
   getBalance() { return this.request('GET', '/finance/balance'); }
   getMyAccount() { return this.request('GET', '/myAccount/commercialInfo/'); }

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy } from 'lucide-react';
+import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -19,6 +19,8 @@ export default function Transactions({ tipo }) {
   const [to, setTo] = useState('');
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
+  const [linkModal, setLinkModal] = useState(false);
+  const [billModal, setBillModal] = useState(false);
   const { can } = useBiz();
   const dq = useDebounced(q);
   const list = useBizQuery('/transactions', { tipo, situacao, q: dq, from, to });
@@ -36,7 +38,18 @@ export default function Transactions({ tipo }) {
       <PageHeader
         title={receita ? 'Contas a receber' : 'Contas a pagar'}
         subtitle={receita ? 'Mensalidades, projetos e vendas. Emita cobranças no Asaas e acompanhe quem pagou.' : 'Fornecedores, folha, impostos e despesas fixas. Vincule ao contrato para entrar na margem dele.'}
-        actions={write && <Button icon={Plus} onClick={() => setEditing({})}>{receita ? 'Nova conta a receber' : 'Nova conta a pagar'}</Button>}
+        actions={
+          write && (
+            <div className="flex gap-2">
+              {receita ? (
+                <Button variant="secondary" icon={Link2} onClick={() => setLinkModal(true)}>Link Asaas</Button>
+              ) : (
+                <Button variant="secondary" icon={Barcode} onClick={() => setBillModal(true)}>Pagar boleto Asaas</Button>
+              )}
+              <Button icon={Plus} onClick={() => setEditing({})}>{receita ? 'Nova conta a receber' : 'Nova conta a pagar'}</Button>
+            </div>
+          )
+        }
       />
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -102,6 +115,8 @@ export default function Transactions({ tipo }) {
 
       {editing && <TransactionForm tipo={tipo} initial={editing} onClose={() => setEditing(null)} onDelete={(id) => act.mutate({ id, action: '', method: 'DELETE' }, { onSuccess: () => setEditing(null) })} />}
       {paying && <PayModal t={paying} onClose={() => setPaying(null)} />}
+      {linkModal && <PaymentLinkModal onClose={() => setLinkModal(false)} />}
+      {billModal && <PayBillModal onClose={() => setBillModal(false)} />}
     </>
   );
 }
@@ -212,3 +227,166 @@ function PayModal({ t, onClose }) {
     </Modal>
   );
 }
+
+function PaymentLinkModal({ onClose }) {
+  const [f, setF] = useState({
+    name: '',
+    description: '',
+    value: '',
+    billingType: 'UNDEFINED',
+    dueDateLimitDays: 10,
+    maxInstallmentCount: 1,
+  });
+  const [created, setCreated] = useState(null);
+  const create = useBizMutation((body) => biz('/payment-links', { method: 'POST', body }), {
+    onSuccess: (res) => {
+      setCreated(res);
+      toast.success('Link de pagamento criado no Asaas!');
+    },
+  });
+
+  const copy = (url) => {
+    navigator.clipboard.writeText(url);
+    toast.success('Link copiado para a área de transferência!');
+  };
+
+  const shareWhatsapp = (url, name, value) => {
+    const text = encodeURIComponent(`Olá! Segue o link seguro para pagamento de ${name || 'serviço'}${value ? ` (R$ ${money(value)})` : ''}:\n${url}`);
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={created ? 'Link de pagamento criado!' : 'Gerar Link de Pagamento Asaas'}
+      description={created ? 'Envie o link para o cliente pagar por PIX, Boleto ou Cartão.' : 'Crie um link de pagamento avulso ou parcelado direto no Asaas.'}
+      footer={
+        created ? (
+          <Button variant="primary" onClick={onClose}>Concluir</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+            <Button
+              variant="success"
+              loading={create.isPending}
+              disabled={!f.name || !f.value}
+              onClick={() => create.mutate({ ...f, value: Number(f.value), dueDateLimitDays: Number(f.dueDateLimitDays), maxInstallmentCount: Number(f.maxInstallmentCount) })}
+            >
+              Criar no Asaas
+            </Button>
+          </>
+        )
+      }
+    >
+      {created ? (
+        <div className="space-y-4">
+          <div className="p-4 bg-[var(--surface-2)] rounded-xl border border-[var(--line)]">
+            <span className="text-xs text-[var(--muted)] block">URL do link de pagamento</span>
+            <div className="flex items-center gap-2 mt-1">
+              <Input readOnly value={created.url} className="text-xs num font-semibold" />
+              <Button size="sm" variant="secondary" icon={Copy} onClick={() => copy(created.url)} title="Copiar link" />
+              <Button size="sm" variant="secondary" icon={ExternalLink} onClick={() => window.open(created.url, '_blank')} title="Abrir link" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button className="w-full" icon={Share2} onClick={() => shareWhatsapp(created.url, created.name, created.value)}>
+              Enviar no WhatsApp
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Nome da cobrança / produto" className="sm:col-span-2">
+            <Input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ex.: Consultoria, Venda Avulsa..." />
+          </Field>
+          <Field label="Valor">
+            <MoneyInput value={f.value} onChange={(v) => setF({ ...f, value: v })} placeholder="0,00" />
+          </Field>
+          <Field label="Formas aceitas">
+            <Select value={f.billingType} onChange={(e) => setF({ ...f, billingType: e.target.value })}>
+              <option value="UNDEFINED">Todas (PIX, Boleto e Cartão)</option>
+              <option value="PIX">Somente PIX</option>
+              <option value="BOLETO">Somente Boleto</option>
+              <option value="CARTAO">Somente Cartão de Crédito</option>
+            </Select>
+          </Field>
+          <Field label="Validade da fatura (dias)">
+            <Input type="number" min={1} max={90} value={f.dueDateLimitDays} onChange={(e) => setF({ ...f, dueDateLimitDays: e.target.value })} />
+          </Field>
+          <Field label="Parcelamento máximo">
+            <Select value={f.maxInstallmentCount} onChange={(e) => setF({ ...f, maxInstallmentCount: e.target.value })}>
+              <option value={1}>À vista (1x)</option>
+              <option value={2}>Até 2x</option>
+              <option value={3}>Até 3x</option>
+              <option value={6}>Até 6x</option>
+              <option value={10}>Até 10x</option>
+              <option value={12}>Até 12x</option>
+            </Select>
+          </Field>
+          <Field label="Descrição detalhada (opcional)" className="sm:col-span-2">
+            <Textarea rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Ex.: Referente aos serviços acordados..." />
+          </Field>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function PayBillModal({ onClose }) {
+  const [f, setF] = useState({
+    identificationField: '',
+    value: '',
+    dueDate: todayYmd(),
+    scheduleDate: todayYmd(),
+    description: '',
+  });
+
+  const payBill = useBizMutation((body) => biz('/transactions/pay-bill-asaas', { method: 'POST', body }), {
+    success: 'Boleto agendado/pago pelo saldo Asaas!',
+    onSuccess: onClose,
+  });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Pagar Boleto via Asaas"
+      description="Pague ou agende contas e boletos de fornecedores debitando do saldo da sua Conta Asaas."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            variant="primary"
+            loading={payBill.isPending}
+            disabled={!f.identificationField || !f.value}
+            onClick={() => payBill.mutate({ ...f, value: Number(f.value) })}
+          >
+            Pagar com saldo Asaas
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Linha digitável ou código de barras" hint="Cole os 47 ou 48 dígitos do boleto bancário">
+          <Input required value={f.identificationField} onChange={(e) => setF({ ...f, identificationField: e.target.value })} placeholder="00000.00000 00000.000000 00000.000000 0 00000000000000" />
+        </Field>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Valor do boleto">
+            <MoneyInput value={f.value} onChange={(v) => setF({ ...f, value: v })} placeholder="0,00" />
+          </Field>
+          <Field label="Vencimento do boleto">
+            <Input type="date" value={f.dueDate} onChange={(e) => setF({ ...f, dueDate: e.target.value })} />
+          </Field>
+          <Field label="Data do débito / agendamento">
+            <Input type="date" value={f.scheduleDate} onChange={(e) => setF({ ...f, scheduleDate: e.target.value })} />
+          </Field>
+          <Field label="Descrição / Fornecedor">
+            <Input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="Ex.: Hospedagem, DAS, Aluguel..." />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+

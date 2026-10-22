@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle, RefreshCw, DownloadCloud, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -101,36 +101,103 @@ function AsaasTab() {
   const st = useBizQuery('/company/asaas/status');
   const [key, setKey] = useState('');
   const [amb, setAmb] = useState(null);
+  const [syncStats, setSyncStats] = useState(null);
   const save = useBizMutation((body) => biz('/company/asaas', { method: 'PUT', body }), {
     onSuccess: (r) => { setKey(''); r.conexao?.ok ? toast.success(`Asaas conectado. Saldo: ${money(r.conexao.saldo)}`) : toast.error(r.conexao?.erro || 'Chave salva, mas a conexão falhou'); },
+  });
+  const sync = useBizMutation(() => biz('/company/asaas/sync', { method: 'POST' }), {
+    onSuccess: (res) => {
+      setSyncStats(res.stats);
+      toast.success('Histórico do Asaas sincronizado!');
+    },
   });
   if (st.isLoading) return <Loading />;
   const s = st.data;
   const copy = (v) => { navigator.clipboard.writeText(v); toast.success('Copiado'); };
   return (
-    <div className="grid xl:grid-cols-2 gap-5 items-start">
-      <Panel title="Conexão">
-        <div className="flex items-center gap-2 mb-4 text-sm">
-          {s.conectado ? <><CheckCircle2 className="w-5 h-5 text-[var(--in)]" /><span>Conectado ao ambiente <b>{s.ambiente === 'PRODUCAO' ? 'de produção' : 'sandbox'}</b>. Saldo: <b className="num">{money(s.saldo)}</b></span></>
-            : s.configurado ? <><AlertTriangle className="w-5 h-5 text-[var(--bad)]" /><span>{s.erro}</span></> : <span className="text-[var(--muted)]">Ainda não configurado.</span>}
-        </div>
-        <div className="space-y-4">
-          <Field label="Ambiente"><Select value={amb || s.ambiente} onChange={(e) => setAmb(e.target.value)}><option value="SANDBOX">Sandbox (testes)</option><option value="PRODUCAO">Produção</option></Select></Field>
-          <Field label="Chave de API" hint="No Asaas: Integrações › Chaves de API. Guardamos a chave criptografada."><Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={s.configurado ? 'Deixe em branco para manter a atual' : '$aact_…'} autoComplete="off" /></Field>
-          <div className="flex gap-2">
-            <Button loading={save.isPending} disabled={!key && !amb} onClick={() => save.mutate({ ...(key && { api_key: key }), ambiente: amb || s.ambiente })}>Salvar e testar</Button>
-            {s.configurado && <Button variant="danger" onClick={() => window.confirm('Desconectar o Asaas? Cobranças existentes continuam lá.') && save.mutate({ api_key: null })}>Desconectar</Button>}
+    <div className="space-y-5">
+      <div className="grid xl:grid-cols-2 gap-5 items-start">
+        <Panel title="Conexão">
+          <div className="flex items-center gap-2 mb-4 text-sm">
+            {s.conectado ? <><CheckCircle2 className="w-5 h-5 text-[var(--in)]" /><span>Conectado ao ambiente <b>{s.ambiente === 'PRODUCAO' ? 'de produção' : 'sandbox'}</b>. Saldo: <b className="num">{money(s.saldo)}</b></span></>
+              : s.configurado ? <><AlertTriangle className="w-5 h-5 text-[var(--bad)]" /><span>{s.erro}</span></> : <span className="text-[var(--muted)]">Ainda não configurado.</span>}
+          </div>
+          <div className="space-y-4">
+            <Field label="Ambiente"><Select value={amb || s.ambiente} onChange={(e) => setAmb(e.target.value)}><option value="SANDBOX">Sandbox (testes)</option><option value="PRODUCAO">Produção</option></Select></Field>
+            <Field label="Chave de API" hint="No Asaas: Integrações › Chaves de API. Guardamos a chave criptografada."><Input type="password" value={key} onChange={(e) => setKey(e.target.value)} placeholder={s.configurado ? 'Deixe em branco para manter a atual' : '$aact_…'} autoComplete="off" /></Field>
+            <div className="flex gap-2">
+              <Button loading={save.isPending} disabled={!key && !amb} onClick={() => save.mutate({ ...(key && { api_key: key }), ambiente: amb || s.ambiente })}>Salvar e testar</Button>
+              {s.configurado && <Button variant="danger" onClick={() => window.confirm('Desconectar o Asaas? Cobranças existentes continuam lá.') && save.mutate({ api_key: null })}>Desconectar</Button>}
+            </div>
+          </div>
+        </Panel>
+        <Panel title="Webhook (retorno de pagamentos)">
+          <p className="text-sm text-[var(--ink-2)] mb-4">No Asaas, vá em Integrações › Webhooks, crie um webhook de cobranças com a URL e o token abaixo e marque os eventos listados. Assim os pagamentos dão baixa sozinhos aqui.</p>
+          <div className="space-y-3">
+            {[['URL', s.webhook.url], ['Token de autenticação', s.webhook.token]].map(([l, v]) => (
+              <Field key={l} label={l}><div className="flex gap-2"><Input readOnly value={v} className="num text-xs" /><Button variant="secondary" icon={Copy} onClick={() => copy(v)} aria-label={`Copiar ${l}`} /></div></Field>
+            ))}
+            <Field label="Eventos"><p className="text-xs text-[var(--muted)] leading-relaxed">{s.webhook.eventos.join(', ')}</p></Field>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel title="Importação e Sincronização do Histórico">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="max-w-xl">
+            <p className="text-sm text-[var(--ink-2)]">
+              Importe ou sincronize todo o histórico da sua conta Asaas para o Freedom de forma segura e sem duplicidades:
+            </p>
+            <ul className="text-xs text-[var(--muted)] list-disc pl-4 mt-2 space-y-1">
+              <li><b>Clientes:</b> importa cadastros com CPF/CNPJ, e-mail e telefone para sua base.</li>
+              <li><b>Assinaturas:</b> cria contratos recorrentes no Freedom vinculados aos clientes.</li>
+              <li><b>Cobranças (Recebíveis):</b> importa títulos pagos e em aberto, com baixas e tarifas conciliadas.</li>
+              <li><b>Contas a pagar:</b> importa pagamentos e agendamentos de boletos efetuados no Asaas.</li>
+            </ul>
+          </div>
+          <div className="shrink-0">
+            <Button
+              size="lg"
+              variant="primary"
+              icon={RefreshCw}
+              loading={sync.isPending}
+              disabled={!s.conectado}
+              onClick={() => sync.mutate()}
+            >
+              {sync.isPending ? 'Sincronizando Asaas…' : 'Sincronizar histórico agora'}
+            </Button>
           </div>
         </div>
-      </Panel>
-      <Panel title="Webhook (retorno de pagamentos)">
-        <p className="text-sm text-[var(--ink-2)] mb-4">No Asaas, vá em Integrações › Webhooks, crie um webhook de cobranças com a URL e o token abaixo e marque os eventos listados. Assim os pagamentos dão baixa sozinhos aqui.</p>
-        <div className="space-y-3">
-          {[['URL', s.webhook.url], ['Token de autenticação', s.webhook.token]].map(([l, v]) => (
-            <Field key={l} label={l}><div className="flex gap-2"><Input readOnly value={v} className="num text-xs" /><Button variant="secondary" icon={Copy} onClick={() => copy(v)} aria-label={`Copiar ${l}`} /></div></Field>
-          ))}
-          <Field label="Eventos"><p className="text-xs text-[var(--muted)] leading-relaxed">{s.webhook.eventos.join(', ')}</p></Field>
-        </div>
+
+        {syncStats && (
+          <div className="mt-5 p-4 rounded-xl border border-[var(--in)]/30 bg-[var(--in)]/5">
+            <h4 className="font-bold text-sm text-[var(--in)] flex items-center gap-2 mb-3">
+              <CheckCircle2 className="w-4 h-4" /> Sincronização concluída com sucesso!
+            </h4>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--line)]">
+                <span className="text-[var(--muted)] block">Clientes</span>
+                <b className="text-sm font-extrabold text-[var(--ink)]">+{syncStats.clientes?.importados || 0}</b>
+                <span className="text-[10px] text-[var(--muted)] block">{syncStats.clientes?.atualizados || 0} atualizados</span>
+              </div>
+              <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--line)]">
+                <span className="text-[var(--muted)] block">Contratos (Assinaturas)</span>
+                <b className="text-sm font-extrabold text-[var(--ink)]">+{syncStats.assinaturas?.importadas || 0}</b>
+                <span className="text-[10px] text-[var(--muted)] block">{syncStats.assinaturas?.atualizadas || 0} atualizados</span>
+              </div>
+              <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--line)]">
+                <span className="text-[var(--muted)] block">Cobranças a receber</span>
+                <b className="text-sm font-extrabold text-[var(--ink)]">+{syncStats.cobrancas?.importadas || 0}</b>
+                <span className="text-[10px] text-[var(--muted)] block">{syncStats.cobrancas?.atualizadas || 0} atualizadas</span>
+              </div>
+              <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--line)]">
+                <span className="text-[var(--muted)] block">Contas a pagar</span>
+                <b className="text-sm font-extrabold text-[var(--ink)]">+{syncStats.contas_pagar?.importadas || 0}</b>
+                <span className="text-[10px] text-[var(--muted)] block">{syncStats.contas_pagar?.atualizadas || 0} atualizadas</span>
+              </div>
+            </div>
+          </div>
+        )}
       </Panel>
     </div>
   );

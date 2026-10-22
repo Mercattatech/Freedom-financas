@@ -16,6 +16,7 @@ const team = require('../services/team');
 const reports = require('../services/reports');
 const apiKeys = require('../services/apiKeys');
 const asaasSync = require('../services/asaasSync');
+const asaasImport = require('../services/asaasImport');
 const { AsaasClient } = require('../services/asaas');
 const { runDaily } = require('../jobs/daily');
 const { mcpHandler } = require('../mcp/server');
@@ -95,6 +96,12 @@ function createBizRouter() {
       res.json({ configurado: true, conectado: false, erro: e.message, ambiente: full.asaas_ambiente, webhook });
     }
   }));
+  r.post('/company/asaas/sync', requirePerm('config:write'), ah(async (req, res) => {
+    res.json(await asaasImport.syncAllFromAsaas(req.ctx, req.body || {}));
+  }));
+  r.get('/payment-links', ah(async (req, res) => res.json(await asaasImport.listPaymentLinks(req.ctx, req.query))));
+  r.post('/payment-links', requirePerm('financeiro:write'), ah(async (req, res) => res.status(201).json(await asaasImport.createPaymentLink(req.ctx, req.body || {}))));
+  r.post('/transactions/pay-bill-asaas', requirePerm('financeiro:write'), ah(async (req, res) => res.json(await asaasImport.payBillViaAsaas(req.ctx, req.body || {}))));
 
   // Membros
   r.get('/members', ah(async (req, res) => res.json(await companies.listMembers(req.ctx))));
