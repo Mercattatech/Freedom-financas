@@ -227,6 +227,7 @@ function createBizRouter() {
   // Relatórios
   const rep = requirePerm('relatorios:read');
   r.get('/reports/dashboard', rep, ah(async (req, res) => res.json(await reports.dashboard(req.ctx, req.query))));
+  r.get('/reports/cobrancas-situacao', rep, ah(async (req, res) => res.json(await reports.situacaoCobrancas(req.ctx, req.query))));
   r.get('/reports/dre', rep, ah(async (req, res) => res.json(await reports.dre(req.ctx, req.query))));
   r.get('/reports/contracts-margin', rep, ah(async (req, res) => res.json(await reports.contractsMargin(req.ctx, req.query))));
   r.get('/reports/clients-margin', rep, ah(async (req, res) => res.json(await reports.clientsMargin(req.ctx, req.query))));

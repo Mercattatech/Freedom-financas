@@ -8,7 +8,7 @@ import { PageHeader, Button, Field, Input, Select, Textarea, MoneyInput, Modal, 
 import { useLookups, FORMAS, GRUPOS_DRE } from '../components/lookups';
 import { money, date, todayYmd, ymd, currentYm } from '../format';
 
-const SITUACOES = [['ABERTO', 'Em aberto'], ['VENCIDO', 'Vencidos'], ['A_VENCER', 'A vencer'], ['PAGO', 'Pagos'], ['', 'Todos']];
+const SITUACOES = [['ABERTO', 'Em aberto'], ['VENCIDO', 'Vencidos'], ['A_VENCER', 'A vencer'], ['CONFIRMADO', 'Confirmados'], ['PAGO', 'Pagos'], ['', 'Todos']];
 
 export default function Transactions({ tipo }) {
   const receita = tipo === 'RECEITA';

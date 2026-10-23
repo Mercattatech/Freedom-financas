@@ -36,7 +36,7 @@ const diasAtraso = (t) => {
 function buildWhere(ctx, q = {}) {
   const where = { company_id: ctx.companyId };
   if (q.tipo) where.tipo = q.tipo;
-  for (const f of ['client_id', 'supplier_id', 'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'origem', 'nfse_status']) {
+  for (const f of ['client_id', 'supplier_id', 'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'origem', 'nfse_status', 'asaas_status']) {
     if (q[f]) where[f] = q[f];
   }
   const campoData = q.por === 'competencia' ? 'competencia' : q.por === 'pagamento' ? 'data_pagamento' : 'vencimento';
@@ -53,6 +53,7 @@ function buildWhere(ctx, q = {}) {
   else if (s === 'VENCIDO') { where.status = { in: ['PENDENTE', 'PARCIAL'] }; where.vencimento = { ...(where.vencimento || {}), lt: today() }; }
   else if (s === 'A_VENCER') { where.status = { in: ['PENDENTE', 'PARCIAL'] }; where.vencimento = { ...(where.vencimento || {}), gte: today() }; }
   else if (s === 'PAGO') where.status = 'PAGO';
+  else if (s === 'CONFIRMADO') where.OR = [{ status: 'CONFIRMADO' }, { asaas_status: { in: ['CONFIRMED', 'CREDIT_CARD_CONFIRMED'] } }];
   else if (s === 'CANCELADO') where.status = 'CANCELADO';
   else if (!q.incluir_cancelados) where.status = { not: 'CANCELADO' };
   if (q.q) {

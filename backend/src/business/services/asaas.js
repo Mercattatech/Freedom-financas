@@ -216,9 +216,17 @@ class AsaasClient {
     return this.request('GET', `/invoices?${params.toString()}`);
   }
 
-  // Conta
+  // Conta e Estatísticas Financeiras
   getBalance() { return this.request('GET', '/finance/balance'); }
   getMyAccount() { return this.request('GET', '/myAccount/commercialInfo/'); }
+  getPaymentStatistics(params = {}) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    }
+    const qStr = qs.toString();
+    return this.request('GET', `/finance/payment/statistics${qStr ? `?${qStr}` : ''}`);
+  }
 }
 
 // Status Asaas → status interno do lançamento

@@ -4,6 +4,7 @@ import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature } from
 import { useBizQuery } from '../BizContext';
 import { PageHeader, Panel, MonthPicker, Kpi, Loading, ErrorBox, MarginRuler, Money, cx } from '../components/ui';
 import { TrendChart, Waterfall } from '../components/Charts';
+import SituacaoCobrancas from '../components/SituacaoCobrancas';
 import { money, pct, currentYm, monthLong, date } from '../format';
 
 export default function Dashboard() {
@@ -21,6 +22,9 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Visão geral" subtitle={`Resultado por competência de ${monthLong(mes).toLowerCase()}. Caixa e vencimentos são de hoje.`} actions={<MonthPicker value={mes} onChange={setMes} />} />
+
+      {/* Situação das cobranças (Visão Asaas) */}
+      <SituacaoCobrancas initialData={d.situacao_cobrancas} mes={mes} />
 
       <div className="grid xl:grid-cols-[1fr_340px] gap-5 mb-5">
         <Panel title="Do faturamento ao lucro" action={<Link to="/empresas/relatorios" className="text-sm font-semibold text-[var(--result)]">Ver DRE completa</Link>}>

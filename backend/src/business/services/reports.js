@@ -642,7 +642,213 @@ async function dashboard(ctx, { ref } = {}) {
       reajustes_proximos: reajustes,
       vencido_receber: vencReceber,
     },
+    situacao_cobrancas: await situacaoCobrancas(ctx, { ref }),
   };
 }
 
-module.exports = { dre, contractsMargin, clientsMargin, agencyMargin, cashflow, aging, dashboard, bankBalances, subscriptionMetrics };
+async function situacaoCobrancas(ctx, { ref, periodo = 'mes', forma_pagamento } = {}) {
+  const hoje = today();
+  const mes = startOfMonth(ref || hoje);
+  const fimMes = endOfMonth(mes);
+
+  let dateFilter = {};
+  if (periodo === 'mes' || !periodo) {
+    dateFilter = {
+      OR: [
+        { vencimento: { gte: mes, lte: fimMes } },
+        { data_pagamento: { gte: mes, lte: fimMes } },
+        { competencia: { gte: mes, lte: fimMes } },
+      ],
+    };
+  } else if (periodo === 'mes_anterior') {
+    const prevMes = addMonths(mes, -1);
+    const prevFim = endOfMonth(prevMes);
+    dateFilter = {
+      OR: [
+        { vencimento: { gte: prevMes, lte: prevFim } },
+        { data_pagamento: { gte: prevMes, lte: prevFim } },
+        { competencia: { gte: prevMes, lte: prevFim } },
+      ],
+    };
+  } else if (periodo === '30d') {
+    const d30 = addDays(hoje, -30);
+    dateFilter = {
+      OR: [
+        { vencimento: { gte: d30, lte: hoje } },
+        { data_pagamento: { gte: d30, lte: hoje } },
+      ],
+    };
+  } else if (periodo === 'ano') {
+    const anoIni = new Date(Date.UTC(mes.getUTCFullYear(), 0, 1));
+    const anoFim = new Date(Date.UTC(mes.getUTCFullYear(), 11, 31, 23, 59, 59));
+    dateFilter = {
+      OR: [
+        { vencimento: { gte: anoIni, lte: anoFim } },
+        { data_pagamento: { gte: anoIni, lte: anoFim } },
+        { competencia: { gte: anoIni, lte: anoFim } },
+      ],
+    };
+  } else if (periodo === 'todos') {
+    dateFilter = {};
+  }
+
+  const where = {
+    company_id: ctx.companyId,
+    tipo: 'RECEITA',
+    status: { not: 'CANCELADO' },
+    ...dateFilter,
+  };
+
+  if (forma_pagamento) {
+    where.forma_pagamento = forma_pagamento;
+  }
+
+  const [company, txs] = await Promise.all([
+    prisma.bizCompany.findUnique({
+      where: { id: ctx.companyId },
+      select: { asaas_api_key: true, asaas_ambiente: true },
+    }),
+    prisma.bizTransaction.findMany({
+      where,
+      include: {
+        client: { select: { id: true, nome: true, asaas_customer_id: true } },
+      },
+    }),
+  ]);
+
+  const buckets = {
+    recebidas: { valor: 0, liquido: 0, clientes: new Set(), cobrancas: 0 },
+    confirmadas: { valor: 0, liquido: 0, clientes: new Set(), cobrancas: 0 },
+    aguardando: { valor: 0, liquido: 0, clientes: new Set(), cobrancas: 0 },
+    vencidas: { valor: 0, liquido: 0, clientes: new Set(), cobrancas: 0 },
+  };
+
+  for (const t of txs) {
+    const val = round2(num(t.valor_pago) > 0 ? num(t.valor_pago) : num(t.valor));
+    const fee = round2(num(t.taxa) || 0);
+    const net = round2(Math.max(0, val - fee));
+    const clientKey = t.client_id || t.client?.asaas_customer_id || t.client?.nome || t.id;
+    const asaasSt = String(t.asaas_status || '').toUpperCase();
+    const venc = toDate(t.vencimento);
+
+    let b = null;
+    if (['RECEIVED', 'RECEIVED_IN_CASH'].includes(asaasSt) || (t.status === 'PAGO' && asaasSt !== 'CONFIRMED')) {
+      b = buckets.recebidas;
+    } else if (['CONFIRMED', 'CREDIT_CARD_CONFIRMED'].includes(asaasSt) || t.status === 'CONFIRMADO') {
+      b = buckets.confirmadas;
+    } else if (asaasSt === 'OVERDUE' || (['PENDENTE', 'PARCIAL'].includes(t.status) && venc < hoje)) {
+      b = buckets.vencidas;
+    } else {
+      b = buckets.aguardando;
+    }
+
+    b.valor = round2(b.valor + val);
+    b.liquido = round2(b.liquido + net);
+    b.clientes.add(clientKey);
+    b.cobrancas += 1;
+  }
+
+  let statsFromAsaas = false;
+  // Se localmente não há cobranças, mas a empresa tem Asaas configurado,
+  // consulta diretamente as estatísticas da API do Asaas como fallback
+  if (txs.length === 0 && company?.asaas_api_key) {
+    try {
+      const { AsaasClient } = require('./asaas');
+      const asaas = new AsaasClient(company);
+      const ymdStr = (d) => d.toISOString().slice(0, 10);
+      const baseFilter = {
+        'dueDate[ge]': ymdStr(mes),
+        'dueDate[le]': ymdStr(fimMes),
+      };
+      if (forma_pagamento) baseFilter.billingType = forma_pagamento;
+
+      const [rec, conf, pend, overd] = await Promise.all([
+        asaas.getPaymentStatistics({ ...baseFilter, status: 'RECEIVED' }).catch(() => null),
+        asaas.getPaymentStatistics({ ...baseFilter, status: 'CONFIRMED' }).catch(() => null),
+        asaas.getPaymentStatistics({ ...baseFilter, status: 'PENDING' }).catch(() => null),
+        asaas.getPaymentStatistics({ ...baseFilter, status: 'OVERDUE' }).catch(() => null),
+      ]);
+
+      if (rec || conf || pend || overd) {
+        statsFromAsaas = true;
+        if (rec) {
+          buckets.recebidas.valor = round2(rec.value || 0);
+          buckets.recebidas.liquido = round2(rec.netValue || rec.value || 0);
+          buckets.recebidas.cobrancas = rec.quantity || 0;
+        }
+        if (conf) {
+          buckets.confirmadas.valor = round2(conf.value || 0);
+          buckets.confirmadas.liquido = round2(conf.netValue || conf.value || 0);
+          buckets.confirmadas.cobrancas = conf.quantity || 0;
+        }
+        if (pend) {
+          buckets.aguardando.valor = round2(pend.value || 0);
+          buckets.aguardando.liquido = round2(pend.netValue || pend.value || 0);
+          buckets.aguardando.cobrancas = pend.quantity || 0;
+        }
+        if (overd) {
+          buckets.vencidas.valor = round2(overd.value || 0);
+          buckets.vencidas.liquido = round2(overd.netValue || overd.value || 0);
+          buckets.vencidas.cobrancas = overd.quantity || 0;
+        }
+      }
+    } catch (e) {
+      console.warn('[biz] Falha ao consultar estatísticas do Asaas:', e.message);
+    }
+  }
+
+  const totalValor = round2(
+    buckets.recebidas.valor +
+    buckets.confirmadas.valor +
+    buckets.aguardando.valor +
+    buckets.vencidas.valor
+  );
+
+  const totalLiquido = round2(
+    buckets.recebidas.liquido +
+    buckets.confirmadas.liquido +
+    buckets.aguardando.liquido +
+    buckets.vencidas.liquido
+  );
+
+  const formatB = (b) => ({
+    valor: b.valor,
+    liquido: b.liquido,
+    clientes: b.clientes instanceof Set ? b.clientes.size : (b.clientes || 0),
+    cobrancas: b.cobrancas || 0,
+    percentual: totalValor > 0 ? round2((b.valor / totalValor) * 100) : 0,
+  });
+
+  const totalClientes = new Set([
+    ...buckets.recebidas.clientes,
+    ...buckets.confirmadas.clientes,
+    ...buckets.aguardando.clientes,
+    ...buckets.vencidas.clientes,
+  ]).size;
+
+  const totalCobrancas = (
+    buckets.recebidas.cobrancas +
+    buckets.confirmadas.cobrancas +
+    buckets.aguardando.cobrancas +
+    buckets.vencidas.cobrancas
+  );
+
+  return {
+    referencia: ym(mes),
+    periodo,
+    asaas_conectado: !!company?.asaas_api_key,
+    stats_origem: statsFromAsaas ? 'ASAAS_LIVE' : 'BANCO_DADOS',
+    recebidas: formatB(buckets.recebidas),
+    confirmadas: formatB(buckets.confirmadas),
+    aguardando: formatB(buckets.aguardando),
+    vencidas: formatB(buckets.vencidas),
+    total: {
+      valor: totalValor,
+      liquido: totalLiquido,
+      clientes: totalClientes,
+      cobrancas: totalCobrancas,
+    },
+  };
+}
+
+module.exports = { dre, contractsMargin, clientsMargin, agencyMargin, cashflow, aging, dashboard, bankBalances, subscriptionMetrics, situacaoCobrancas };
