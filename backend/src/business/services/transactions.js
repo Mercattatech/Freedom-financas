@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 const prisma = require('../db');
 const { num, round2, splitInstallments, sum } = require('../lib/money');
-const { toDate, startOfMonth, addMonths, today, ym } = require('../lib/dates');
+const { toDate, startOfMonth, addMonths, addDays, today, ym } = require('../lib/dates');
 const { notFound, badRequest } = require('../lib/errors');
 const { audit } = require('../lib/audit');
 const { AsaasClient } = require('./asaas');
@@ -105,10 +105,25 @@ async function assertRefs(ctx, d) {
   }
 }
 
+function stepDate(baseDate, i, periodicidade = 'MENSAL') {
+  if (i === 0) return baseDate;
+  switch (String(periodicidade || '').toUpperCase()) {
+    case 'SEMANAL': return addDays(baseDate, i * 7);
+    case 'QUINZENAL': return addDays(baseDate, i * 15);
+    case 'BIMESTRAL': return addMonths(baseDate, i * 2);
+    case 'TRIMESTRAL': return addMonths(baseDate, i * 3);
+    case 'SEMESTRAL': return addMonths(baseDate, i * 6);
+    case 'ANUAL': return addMonths(baseDate, i * 12);
+    case 'MENSAL':
+    default:
+      return addMonths(baseDate, i);
+  }
+}
+
 /**
  * Cria um ou mais lançamentos.
- * - parcelas: divide o valor total em N vencimentos mensais
- * - repetir: replica o mesmo valor por N meses (despesas fixas, por exemplo)
+ * - parcelas: divide o valor total em N vencimentos mensais (ou na periodicidade informada)
+ * - repetir: replica o mesmo valor por N períodos (recorrência)
  */
 async function create(ctx, data) {
   const tipo = data.tipo;
@@ -128,6 +143,7 @@ async function create(ctx, data) {
 
   const parcelas = Math.max(1, Math.min(parseInt(data.parcelas || 1, 10), 120));
   const repetir = Math.max(1, Math.min(parseInt(data.repetir || 1, 10), 120));
+  const periodicidade = data.periodicidade || 'MENSAL';
   const n = parcelas > 1 ? parcelas : repetir;
   const valores = parcelas > 1 ? splitInstallments(valor, parcelas) : Array(n).fill(valor);
   const grupo = n > 1 ? crypto.randomUUID() : null;
@@ -139,6 +155,8 @@ async function create(ctx, data) {
 
   const created = [];
   for (let i = 0; i < n; i++) {
+    const dueDate = stepDate(venc, i, periodicidade);
+    const compDate = parcelas > 1 ? competenciaBase : startOfMonth(dueDate);
     const t = await prisma.bizTransaction.create({
       data: {
         ...base,
@@ -146,8 +164,8 @@ async function create(ctx, data) {
         tipo,
         descricao: n > 1 ? `${data.descricao} (${i + 1}/${n})` : data.descricao,
         valor: valores[i],
-        vencimento: addMonths(venc, i),
-        competencia: parcelas > 1 ? competenciaBase : addMonths(competenciaBase, i),
+        vencimento: dueDate,
+        competencia: compDate,
         parcela: n > 1 ? i + 1 : null,
         total_parcelas: n > 1 ? n : null,
         grupo_parcelas: grupo,
@@ -159,7 +177,7 @@ async function create(ctx, data) {
     created.push(t);
   }
   await audit(ctx, 'create', tipo === 'RECEITA' ? 'conta_receber' : 'conta_pagar', created[0].id,
-    `${tipo === 'RECEITA' ? 'Conta a receber' : 'Conta a pagar'} "${data.descricao}" — ${n}x — R$ ${valor}`);
+    `${tipo === 'RECEITA' ? 'Conta a receber' : 'Conta a pagar'} "${data.descricao}" — ${n}x — R$ ${valor}${repetir > 1 ? ' (recorrente)' : ''}`);
 
   // Baixa imediata da primeira ocorrência (ex.: despesa paga no ato; as recorrências seguintes ficam em aberto)
   if (data.pago) {
@@ -167,7 +185,13 @@ async function create(ctx, data) {
   }
   // Emissão de cobrança no Asaas
   if (tipo === 'RECEITA' && data.cobrar_asaas) {
-    for (const t of created) await charge(ctx, t.id, { forma_pagamento: data.forma_pagamento });
+    for (const t of created) {
+      try {
+        await charge(ctx, t.id, { forma_pagamento: data.forma_pagamento });
+      } catch (err) {
+        console.warn(`[biz] falha ao emitir cobrança Asaas para ${t.id}:`, err.message);
+      }
+    }
   }
   const out = await prisma.bizTransaction.findMany({ where: { id: { in: created.map((c) => c.id) } }, include: INCLUDE, orderBy: { vencimento: 'asc' } });
   return out.map(decorate);
@@ -286,19 +310,50 @@ async function remove(ctx, id) {
 async function ensureAsaasCustomer(company, client) {
   if (client.asaas_customer_id) return client.asaas_customer_id;
   if (!client.documento) throw badRequest(`Cadastre o CPF/CNPJ do cliente ${client.nome} para emitir cobrança no Asaas`);
-  const created = await new AsaasClient(company).createCustomer(client);
-  await prisma.bizClient.update({ where: { id: client.id }, data: { asaas_customer_id: created.id } });
-  return created.id;
+  const asaas = new AsaasClient(company);
+  const cleanDoc = String(client.documento).replace(/\D/g, '');
+  try {
+    const created = await asaas.createCustomer(client);
+    await prisma.bizClient.update({ where: { id: client.id }, data: { asaas_customer_id: created.id } });
+    return created.id;
+  } catch (err) {
+    try {
+      const existing = await asaas.request('GET', `/customers?cpfCnpj=${cleanDoc}`);
+      if (existing?.data?.[0]?.id) {
+        const id = existing.data[0].id;
+        await prisma.bizClient.update({ where: { id: client.id }, data: { asaas_customer_id: id } });
+        return id;
+      }
+    } catch { /* ignora se falhar */ }
+    throw err;
+  }
 }
 
-async function charge(ctx, id, { forma_pagamento } = {}) {
-  const t = await get(ctx, id);
+async function charge(ctx, id, { forma_pagamento, client_id, client_data } = {}) {
+  let t = await get(ctx, id);
   if (t.tipo !== 'RECEITA') throw badRequest('Só é possível cobrar contas a receber');
   if (t.asaas_payment_id) return t;
   if (t.status !== 'PENDENTE') throw badRequest('Lançamento não está em aberto');
+
+  if (client_id && client_id !== t.client_id) {
+    await prisma.bizTransaction.update({ where: { id }, data: { client_id } });
+    t = await get(ctx, id);
+  }
   if (!t.client_id) throw badRequest('Vincule um cliente ao lançamento para emitir a cobrança');
+
   const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
-  const client = await prisma.bizClient.findUnique({ where: { id: t.client_id } });
+  let client = await prisma.bizClient.findUnique({ where: { id: t.client_id } });
+
+  if (client_data && Object.keys(client_data).length > 0) {
+    const patch = {};
+    if (client_data.documento) patch.documento = String(client_data.documento).replace(/\D/g, '');
+    if (client_data.email) patch.email = client_data.email;
+    if (client_data.telefone) patch.telefone = client_data.telefone;
+    if (Object.keys(patch).length > 0) {
+      client = await prisma.bizClient.update({ where: { id: client.id }, data: patch });
+    }
+  }
+
   const customer = await ensureAsaasCustomer(company, client);
   const asaas = new AsaasClient(company);
   const venc = toDate(t.vencimento) < today() ? today() : t.vencimento;
@@ -322,6 +377,31 @@ async function charge(ctx, id, { forma_pagamento } = {}) {
   });
   await audit(ctx, 'charge', 'lancamento', id, `Cobrança Asaas ${p.id} emitida para "${t.descricao}"`);
   return decorate(upd);
+}
+
+/** Sincroniza status e dados da cobrança diretamente com a API do Asaas */
+async function syncAsaas(ctx, id) {
+  const t = await get(ctx, id);
+  if (!t.asaas_payment_id) throw badRequest('Lançamento não possui cobrança emitida no Asaas');
+  const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+  if (!company?.asaas_api_key) throw badRequest('Asaas não configurado');
+  const asaas = new AsaasClient(company);
+  const p = await asaas.getPayment(t.asaas_payment_id);
+
+  let pix = t.asaas_pix_payload;
+  if (!pix && ['PENDING', 'OVERDUE'].includes(p.status)) {
+    try {
+      const pixData = await asaas.getPixQrCode(p.id);
+      pix = pixData?.payload || null;
+    } catch { /* ignora */ }
+  }
+
+  const asaasSync = require('./asaasSync');
+  await asaasSync.applyPayment(company, `PAYMENT_${p.status}`, p);
+  if (pix && pix !== t.asaas_pix_payload) {
+    await prisma.bizTransaction.update({ where: { id: t.id }, data: { asaas_pix_payload: pix } });
+  }
+  return get(ctx, id);
 }
 
 /** Baixa em massa */
@@ -461,6 +541,7 @@ module.exports = {
   cancel,
   remove,
   charge,
+  syncAsaas,
   batchPay,
   batchCancel,
   batchDelete,

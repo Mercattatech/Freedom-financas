@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle, Pencil } from 'lucide-react';
+import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle, Pencil, Repeat, QrCode, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -18,11 +18,14 @@ export default function Transactions({ tipo }) {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [nfseFilter, setNfseFilter] = useState('');
+  const [repeticaoFilter, setRepeticaoFilter] = useState('');
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [billModal, setBillModal] = useState(false);
+  const [txLinkModal, setTxLinkModal] = useState(null);
+  const [generateLinkModal, setGenerateLinkModal] = useState(null);
   const [invoiceModal, setInvoiceModal] = useState(null);
   const [batchInvoiceModal, setBatchInvoiceModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -43,19 +46,27 @@ export default function Transactions({ tipo }) {
   const items = list.data?.items || [];
   const r = list.data?.resumo;
 
+  const filteredItems = useMemo(() => {
+    if (!repeticaoFilter) return items;
+    if (repeticaoFilter === 'RECORRENTE') return items.filter((t) => t.recorrente);
+    if (repeticaoFilter === 'PARCELADO') return items.filter((t) => t.parcela && !t.recorrente);
+    if (repeticaoFilter === 'UNICO') return items.filter((t) => !t.recorrente && !t.parcela);
+    return items;
+  }, [items, repeticaoFilter]);
+
   const toggleSelect = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === items.length && items.length > 0) {
+    if (selectedIds.length === filteredItems.length && filteredItems.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(items.map((t) => t.id));
+      setSelectedIds(filteredItems.map((t) => t.id));
     }
   };
 
-  const selectedItems = useMemo(() => items.filter((t) => selectedIds.includes(t.id)), [items, selectedIds]);
+  const selectedItems = useMemo(() => filteredItems.filter((t) => selectedIds.includes(t.id)), [filteredItems, selectedIds]);
   const totalSelected = useMemo(() => selectedItems.reduce((acc, t) => acc + (Number(t.saldo ?? t.valor) || 0), 0), [selectedItems]);
 
   const onFilterSituacao = (k) => {
@@ -104,6 +115,17 @@ export default function Transactions({ tipo }) {
             <option value="ERROR">NFS-e: Com erro</option>
           </Select>
         )}
+        <Select
+          value={repeticaoFilter}
+          onChange={(e) => { setSelectedIds([]); setRepeticaoFilter(e.target.value); }}
+          className="w-[160px]"
+          aria-label="Filtro de repetição"
+        >
+          <option value="">Repetição: Todas</option>
+          <option value="RECORRENTE">Recorrentes</option>
+          <option value="PARCELADO">Parcelados</option>
+          <option value="UNICO">Lançamentos únicos</option>
+        </Select>
         <SearchInput value={q} onChange={(val) => { setSelectedIds([]); setQ(val); }} placeholder={receita ? 'Buscar descrição ou cliente' : 'Buscar descrição ou fornecedor'} />
       </div>
 
@@ -118,7 +140,7 @@ export default function Transactions({ tipo }) {
       )}
 
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] overflow-hidden">
-        {list.isLoading ? <Loading /> : list.error ? <div className="p-4"><ErrorBox error={list.error} /></div> : !items.length ? (
+        {list.isLoading ? <Loading /> : list.error ? <div className="p-4"><ErrorBox error={list.error} /></div> : !filteredItems.length ? (
           <Empty icon={Receipt} title="Nada por aqui" text={situacao === 'VENCIDO' ? 'Nenhum lançamento vencido. Bom sinal.' : 'Nenhum lançamento com esses filtros.'} action={write && <Button icon={Plus} onClick={() => setEditing({})}>Lançar agora</Button>} />
         ) : (
           <div className="overflow-x-auto">
@@ -129,7 +151,7 @@ export default function Transactions({ tipo }) {
                     <th className="w-10 text-center px-2">
                       <input
                         type="checkbox"
-                        checked={items.length > 0 && selectedIds.length === items.length}
+                        checked={filteredItems.length > 0 && selectedIds.length === filteredItems.length}
                         onChange={toggleSelectAll}
                         className="w-4 h-4 rounded border-[var(--line)] cursor-pointer accent-[var(--result)]"
                         title="Selecionar todos"
@@ -148,7 +170,7 @@ export default function Transactions({ tipo }) {
                 </tr>
               </thead>
               <tbody>
-                {items.map((t) => {
+                {filteredItems.map((t) => {
                   const isSelected = selectedIds.includes(t.id);
                   return (
                     <tr key={t.id} className={cx(isSelected && 'bg-[var(--side-active)]/10')}>
@@ -165,7 +187,19 @@ export default function Transactions({ tipo }) {
                       )}
                       <td className="num whitespace-nowrap">{date(t.vencimento)}{t.dias_atraso > 0 && <div className="text-xs text-[var(--bad)]">{t.dias_atraso} dias de atraso</div>}</td>
                       <td className="min-w-[220px]">
-                        <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
+                          {t.recorrente && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/60 px-1.5 py-0.5 rounded" title="Lançamento recorrente">
+                              <Repeat className="w-3 h-3" /> Recorrente{t.parcela ? ` ${t.parcela}/${t.total_parcelas}` : ''}
+                            </span>
+                          )}
+                          {t.parcela && !t.recorrente && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 px-1.5 py-0.5 rounded" title="Parcela de valor total">
+                              {t.parcela}/{t.total_parcelas}
+                            </span>
+                          )}
+                        </div>
                         {t.contract && <div className="text-xs text-[var(--muted)]">Contrato #{t.contract.numero}</div>}
                       </td>
                       <td className="text-[var(--ink-2)] min-w-[170px]">
@@ -237,9 +271,32 @@ export default function Transactions({ tipo }) {
                       </td>
                       <td className="r whitespace-nowrap">
                         {write && (
-                          <div className="inline-flex gap-1">
+                          <div className="inline-flex gap-1 items-center">
                             {!['PAGO', 'CANCELADO'].includes(t.status) && <Button size="sm" variant={receita ? 'success' : 'primary'} icon={Wallet} onClick={() => setPaying(t)}>{receita ? 'Receber' : 'Pagar'}</Button>}
-                            {receita && t.status === 'PENDENTE' && !t.asaas_payment_id && t.client && <Button size="sm" variant="secondary" icon={Send} loading={act.isPending && act.variables?.id === t.id} onClick={() => act.mutate({ id: t.id, action: 'charge' })} title="Emitir cobrança no Asaas">Cobrar</Button>}
+                            {receita && (
+                              t.asaas_payment_id ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  icon={Link2}
+                                  onClick={() => setTxLinkModal(t)}
+                                  title="Ver Link de Pagamento Asaas"
+                                  className="border-indigo-300 dark:border-indigo-700 font-semibold text-indigo-700 dark:text-indigo-300"
+                                >
+                                  Link Asaas
+                                </Button>
+                              ) : t.status === 'PENDENTE' ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  icon={Zap}
+                                  onClick={() => setGenerateLinkModal(t)}
+                                  title="Gerar Link de Pagamento no Asaas"
+                                >
+                                  Gerar Link
+                                </Button>
+                              ) : null
+                            )}
                             {receita && (
                               <Button
                                 size="sm"
@@ -304,6 +361,8 @@ export default function Transactions({ tipo }) {
       {paying && <PayModal t={paying} onClose={() => setPaying(null)} />}
       {linkModal && <PaymentLinkModal onClose={() => setLinkModal(false)} />}
       {billModal && <PayBillModal onClose={() => setBillModal(false)} />}
+      {txLinkModal && <TransactionPaymentLinkModal t={txLinkModal} onClose={() => setTxLinkModal(null)} onRefresh={(upd) => { setTxLinkModal(upd); list.refetch(); }} />}
+      {generateLinkModal && <GeneratePaymentLinkModal t={generateLinkModal} onClose={() => setGenerateLinkModal(null)} onSuccess={(upd) => { setGenerateLinkModal(null); setTxLinkModal(upd); list.refetch(); }} />}
       {invoiceModal && <InvoiceModal t={invoiceModal} onClose={() => setInvoiceModal(null)} onRefresh={() => list.refetch()} onEditClient={(cl) => setEditingClient(cl)} />}
       {batchInvoiceModal && <BatchInvoiceModal ids={selectedIds} count={selectedIds.length} total={totalSelected} onClose={() => setBatchInvoiceModal(false)} onSuccess={() => { setSelectedIds([]); list.refetch(); }} />}
       {batchPayModal && <BatchPayModal ids={selectedIds} count={selectedIds.length} total={totalSelected} tipo={tipo} onClose={() => setBatchPayModal(false)} onSuccess={() => setSelectedIds([])} />}
@@ -324,7 +383,7 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
     competencia: initial.competencia ? ymd(initial.competencia).slice(0, 7) : '', client_id: initial.client_id || '', supplier_id: initial.supplier_id || '',
     contract_id: initial.contract_id || presetContractId || '', account_id: initial.account_id || '', cost_center_id: initial.cost_center_id || '',
     bank_account_id: initial.bank_account_id || '', forma_pagamento: initial.forma_pagamento || '', documento: initial.documento || '', observacoes: initial.observacoes || '',
-    modo: 'UNICA', n: 2, pago: false, cobrar_asaas: false, aplicar_proximas: false,
+    modo: 'UNICA', periodicidade: 'MENSAL', n: 12, pago: false, cobrar_asaas: false, aplicar_proximas: false,
   });
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
   const accounts = useMemo(() => L.accounts.filter((a) => a.natureza === tipo), [L.accounts, tipo]);
@@ -342,7 +401,10 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
     };
     if (isNew) {
       if (f.modo === 'PARCELAS') body.parcelas = Number(f.n);
-      if (f.modo === 'REPETIR') body.repetir = Number(f.n);
+      if (f.modo === 'REPETIR') {
+        body.repetir = Number(f.n);
+        body.periodicidade = f.periodicidade || 'MENSAL';
+      }
       if (f.pago) { body.pago = true; body.bank_account_id = f.bank_account_id || null; }
       if (f.cobrar_asaas) body.cobrar_asaas = true;
     } else body.aplicar_proximas = f.aplicar_proximas;
@@ -378,13 +440,53 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
         <Field label="Forma de pagamento"><Select value={f.forma_pagamento} onChange={set('forma_pagamento')}><option value="">—</option>{FORMAS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
         <Field label="Documento / NF"><Input value={f.documento} onChange={set('documento')} /></Field>
         {isNew && (
-          <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-[1fr_120px] gap-3 items-end">
-            <Field label="Repetição">
-              <Select value={f.modo} onChange={set('modo')}>
-                <option value="UNICA">Lançamento único</option><option value="PARCELAS">Parcelar o valor total</option><option value="REPETIR">Repetir todo mês (mesmo valor)</option>
-              </Select>
-            </Field>
-            {f.modo !== 'UNICA' && <Field label={f.modo === 'PARCELAS' ? 'Parcelas' : 'Meses'}><Input type="number" min={2} max={120} value={f.n} onChange={set('n')} /></Field>}
+          <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-3 space-y-3 bg-[var(--surface-2)]">
+            <div className="grid sm:grid-cols-2 gap-3 items-end">
+              <Field label="Tipo de lançamento">
+                <Select value={f.modo} onChange={set('modo')}>
+                  <option value="UNICA">Lançamento único (avulso)</option>
+                  <option value="PARCELAS">Parcelar valor total</option>
+                  <option value="REPETIR">Recorrente (repetir a cada período)</option>
+                </Select>
+              </Field>
+              {f.modo === 'PARCELAS' && (
+                <Field label="Quantidade de parcelas">
+                  <Input type="number" min={2} max={120} value={f.n} onChange={set('n')} />
+                </Field>
+              )}
+              {f.modo === 'REPETIR' && (
+                <Field label="Periodicidade">
+                  <Select value={f.periodicidade} onChange={set('periodicidade')}>
+                    <option value="MENSAL">Mensal (todo mês)</option>
+                    <option value="QUINZENAL">Quinzenal (a cada 15 dias)</option>
+                    <option value="SEMANAL">Semanal (a cada 7 dias)</option>
+                    <option value="BIMESTRAL">Bimestral (a cada 2 meses)</option>
+                    <option value="TRIMESTRAL">Trimestral (a cada 3 meses)</option>
+                    <option value="SEMESTRAL">Semestral (a cada 6 meses)</option>
+                    <option value="ANUAL">Anual (a cada 1 ano)</option>
+                  </Select>
+                </Field>
+              )}
+            </div>
+
+            {f.modo === 'REPETIR' && (
+              <div className="grid sm:grid-cols-2 gap-3 items-center pt-2 border-t border-[var(--line)]">
+                <Field label="Quantidade de repetições">
+                  <Input type="number" min={2} max={120} value={f.n} onChange={set('n')} />
+                </Field>
+                {f.valor && (
+                  <p className="text-xs text-[var(--muted)] self-center pt-3">
+                    Serão criados <b>{f.n} lançamentos</b> de <b>{money(f.valor)}</b> cada ({f.periodicidade.toLowerCase()}). Total: <b>{money(Number(f.valor) * Number(f.n))}</b>.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {f.modo === 'PARCELAS' && f.valor && (
+              <p className="text-xs text-[var(--muted)] pt-1 border-t border-[var(--line)]">
+                O valor total de <b>{money(f.valor)}</b> será dividido em <b>{f.n} parcelas</b> de ~<b>{money(Number(f.valor) / Number(f.n))}</b>.
+              </p>
+            )}
           </div>
         )}
         {isNew && !receita && (
@@ -392,7 +494,38 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
         )}
         {isNew && f.pago && <Field label="Pago pela conta"><Select value={f.bank_account_id} onChange={set('bank_account_id')}><option value="">—</option>{L.banks.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}</Select></Field>}
         {isNew && receita && (
-          <label className="flex items-start gap-2 text-sm font-medium sm:col-span-2"><input type="checkbox" checked={f.cobrar_asaas} onChange={set('cobrar_asaas')} className="w-4 h-4 mt-0.5" /><span>Emitir cobrança no Asaas<span className="block text-xs text-[var(--muted)] font-normal">Gera boleto/PIX com link de pagamento. O cliente precisa ter CPF/CNPJ.</span></span></label>
+          <div className="sm:col-span-2 p-3 rounded-lg border border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-950/20">
+            <label className="flex items-start gap-2 text-sm font-medium cursor-pointer">
+              <input type="checkbox" checked={f.cobrar_asaas} onChange={set('cobrar_asaas')} className="w-4 h-4 mt-0.5 accent-emerald-600" />
+              <div>
+                <span className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                  <Link2 className="w-4 h-4" /> Gerar cobrança e link de pagamento no Asaas
+                </span>
+                <span className="block text-xs text-[var(--muted)] font-normal mt-0.5">
+                  Gera fatura online do Asaas com PIX, Boleto e Cartão de Crédito. O cliente precisa ter CPF/CNPJ.
+                </span>
+              </div>
+            </label>
+          </div>
+        )}
+        {!isNew && receita && initial.asaas_payment_id && (
+          <div className="sm:col-span-2 p-3 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                <Link2 className="w-4 h-4 text-indigo-600" /> Cobrança Asaas: #{initial.asaas_payment_id}
+              </span>
+              <span className="text-[11px] px-2 py-0.5 rounded font-bold bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
+                {initial.asaas_status || 'PENDING'}
+              </span>
+            </div>
+            {initial.asaas_invoice_url && (
+              <div className="flex items-center gap-2">
+                <Input readOnly value={initial.asaas_invoice_url} className="text-xs font-mono" />
+                <Button size="sm" variant="secondary" icon={Copy} onClick={(e) => { e.preventDefault(); navigator.clipboard.writeText(initial.asaas_invoice_url); toast.success('Link copiado!'); }}>Copiar Link</Button>
+                <Button size="sm" variant="secondary" icon={ExternalLink} onClick={(e) => { e.preventDefault(); window.open(initial.asaas_invoice_url, '_blank'); }}>Abrir</Button>
+              </div>
+            )}
+          </div>
         )}
         {!isNew && initial.grupo_parcelas && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.aplicar_proximas} onChange={set('aplicar_proximas')} className="w-4 h-4" />Aplicar classificação às próximas parcelas em aberto</label>}
         <Field label="Observações" className="sm:col-span-2"><Textarea value={f.observacoes} onChange={set('observacoes')} rows={2} /></Field>
@@ -418,6 +551,293 @@ function PayModal({ t, onClose }) {
         <Field label="Conta financeira" className="col-span-2"><Select value={f.bank_account_id} onChange={(e) => setF({ ...f, bank_account_id: e.target.value })}><option value="">Selecione…</option>{L.banks.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}</Select></Field>
       </div>
       {t.asaas_payment_id && receita && <p className="text-xs text-[var(--muted)] mt-3">Esta cobrança está no Asaas. Ao confirmar, avisamos o Asaas que ela foi recebida por fora para o cliente não ser cobrado de novo.</p>}
+    </Modal>
+  );
+}
+
+function TransactionPaymentLinkModal({ t, onClose, onRefresh }) {
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPix, setCopiedPix] = useState(false);
+
+  const sync = useBizMutation(() => biz(`/transactions/${t.id}/sync-asaas`, { method: 'POST' }), {
+    success: 'Cobrança sincronizada com o Asaas!',
+    onSuccess: (updated) => {
+      onRefresh?.(updated);
+    },
+  });
+
+  const copy = (text, type) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    if (type === 'link') setCopiedLink(true);
+    if (type === 'pix') setCopiedPix(true);
+    setTimeout(() => {
+      setCopiedLink(false);
+      setCopiedPix(false);
+    }, 2000);
+    toast.success('Copiado para a área de transferência!');
+  };
+
+  const shareWhatsapp = () => {
+    const url = t.asaas_invoice_url;
+    if (!url) return;
+    const clientName = t.client?.nome_fantasia || t.client?.nome || 'Cliente';
+    const text = encodeURIComponent(
+      `Olá, ${clientName}! Segue o link de pagamento da fatura "${t.descricao}" no valor de R$ ${money(t.saldo || t.valor)} com vencimento em ${date(t.vencimento)}:\n\n${url}`
+    );
+    window.open(`https://wa.me/?text=${text}`, '_blank');
+  };
+
+  const statusMap = {
+    PENDING: { label: 'Aguardando Pagamento', color: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' },
+    CONFIRMED: { label: 'Confirmado', color: 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300' },
+    RECEIVED: { label: 'Recebido', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
+    RECEIVED_IN_CASH: { label: 'Recebido em Dinheiro', color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
+    OVERDUE: { label: 'Vencido', color: 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300' },
+    REFUNDED: { label: 'Estornado', color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300' },
+  };
+
+  const st = statusMap[t.asaas_status] || { label: t.asaas_status || 'Pendente', color: 'bg-gray-100 text-gray-800' };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width={580}
+      title="Link de Pagamento Asaas"
+      description={`${t.descricao} — ${money(t.saldo || t.valor)}`}
+      footer={
+        <div className="flex items-center justify-between w-full">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={RefreshCw}
+            loading={sync.isPending}
+            onClick={() => sync.mutate()}
+            title="Consultar status no Asaas agora"
+          >
+            Sincronizar com Asaas
+          </Button>
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]">
+          <div>
+            <span className="text-xs text-[var(--muted)] block">Status da Cobrança</span>
+            <span className={cx('inline-block mt-0.5 px-2 py-0.5 rounded text-xs font-bold', st.color)}>
+              {st.label}
+            </span>
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-[var(--muted)] block">Vencimento</span>
+            <span className="text-sm font-semibold num">{date(t.vencimento)}</span>
+          </div>
+        </div>
+
+        {t.asaas_invoice_url ? (
+          <div className="p-4 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-1.5">
+                <Link2 className="w-4 h-4 text-[var(--result)]" /> Link da Fatura (PIX, Boleto e Cartão)
+              </span>
+              <span className="text-[11px] text-[var(--muted)]">Asaas Online</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={t.asaas_invoice_url} className="text-xs num font-semibold" />
+              <Button
+                size="sm"
+                variant={copiedLink ? 'success' : 'secondary'}
+                icon={copiedLink ? Check : Copy}
+                onClick={() => copy(t.asaas_invoice_url, 'link')}
+                title="Copiar link"
+              >
+                {copiedLink ? 'Copiado' : 'Copiar'}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={ExternalLink}
+                onClick={() => window.open(t.asaas_invoice_url, '_blank')}
+                title="Abrir em nova aba"
+              />
+            </div>
+            <Button
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+              icon={Share2}
+              onClick={shareWhatsapp}
+            >
+              Enviar Cobrança no WhatsApp
+            </Button>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-xs text-amber-800 dark:text-amber-200">
+            Link de fatura ainda não gerado ou em processamento. Clique em "Sincronizar com Asaas" para atualizar.
+          </div>
+        )}
+
+        {t.asaas_pix_payload && (
+          <div className="p-4 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-1.5">
+                <QrCode className="w-4 h-4 text-emerald-600" /> PIX Copia e Cola
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input readOnly value={t.asaas_pix_payload} className="text-xs truncate font-mono" />
+              <Button
+                size="sm"
+                variant={copiedPix ? 'success' : 'secondary'}
+                icon={copiedPix ? Check : Copy}
+                onClick={() => copy(t.asaas_pix_payload, 'pix')}
+              >
+                {copiedPix ? 'Copiado' : 'Copiar PIX'}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {t.asaas_boleto_url && (
+          <div className="p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Barcode className="w-4 h-4 text-[var(--muted)]" />
+              <span className="text-xs font-semibold">Boleto Bancário (PDF)</span>
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={ExternalLink}
+              onClick={() => window.open(t.asaas_boleto_url, '_blank')}
+            >
+              Visualizar Boleto
+            </Button>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function GeneratePaymentLinkModal({ t, onClose, onSuccess }) {
+  const L = useLookups();
+  const [clientId, setClientId] = useState(t.client_id || '');
+  const [forma, setForma] = useState(t.forma_pagamento || 'UNDEFINED');
+  const [doc, setDoc] = useState(t.client?.documento || '');
+  const [email, setEmail] = useState(t.client?.email || '');
+  const [phone, setPhone] = useState(t.client?.telefone || '');
+
+  const client = useMemo(() => L.clients.find((c) => c.id === clientId) || t.client, [L.clients, clientId, t.client]);
+
+  React.useEffect(() => {
+    if (client) {
+      if (client.documento) setDoc(client.documento);
+      if (client.email) setEmail(client.email || '');
+      if (client.telefone) setPhone(client.telefone || '');
+    }
+  }, [client]);
+
+  const charge = useBizMutation((body) => biz(`/transactions/${t.id}/charge`, { method: 'POST', body }), {
+    success: 'Cobrança e link de pagamento gerados com sucesso!',
+    onSuccess: (updated) => {
+      onSuccess?.(updated);
+    },
+  });
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!clientId) {
+      toast.error('Selecione um cliente para emitir a cobrança no Asaas');
+      return;
+    }
+    const cleanDoc = String(doc || '').replace(/\D/g, '');
+    if (!cleanDoc || cleanDoc.length < 11) {
+      toast.error('Informe um CPF ou CNPJ válido para o cliente');
+      return;
+    }
+
+    charge.mutate({
+      forma_pagamento: forma,
+      client_id: clientId,
+      client_data: {
+        documento: cleanDoc,
+        email: email || undefined,
+        telefone: phone || undefined,
+      },
+    });
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width={560}
+      title="Gerar Link de Pagamento Asaas"
+      description={`Emita uma cobrança e gere o link para "${t.descricao}"`}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            type="submit"
+            form="genlinkform"
+            variant="success"
+            icon={Zap}
+            loading={charge.isPending}
+          >
+            Gerar Link no Asaas
+          </Button>
+        </>
+      }
+    >
+      <form id="genlinkform" onSubmit={submit} className="space-y-4">
+        <div className="p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)] grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span className="text-[var(--muted)] block">Valor a Cobrar</span>
+            <span className="font-extrabold text-base num text-[var(--ink)]">{money(t.saldo || t.valor)}</span>
+          </div>
+          <div>
+            <span className="text-[var(--muted)] block">Vencimento</span>
+            <span className="font-extrabold text-base num text-[var(--ink)]">{date(t.vencimento)}</span>
+          </div>
+        </div>
+
+        <Field label="Cliente" hint="O Asaas exige que o cliente tenha CPF/CNPJ cadastrado">
+          <Select required value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <option value="">Selecione o cliente…</option>
+            {L.clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome_fantasia || c.nome} {c.documento ? `(${c.documento})` : '— sem CPF/CNPJ'}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="grid sm:grid-cols-2 gap-3 p-3 bg-[var(--paper)] rounded-xl border border-[var(--line)]">
+          <Field label="CPF / CNPJ do cliente" className="sm:col-span-2">
+            <Input
+              required
+              value={doc}
+              onChange={(e) => setDoc(e.target.value)}
+              placeholder="000.000.000-00 ou 00.000.000/0000-00"
+            />
+          </Field>
+          <Field label="E-mail (opcional)">
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="cliente@exemplo.com" />
+          </Field>
+          <Field label="WhatsApp / Telefone (opcional)">
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(11) 99999-9999" />
+          </Field>
+        </div>
+
+        <Field label="Forma de pagamento aceita">
+          <Select value={forma} onChange={(e) => setForma(e.target.value)}>
+            <option value="UNDEFINED">Todas (PIX, Boleto e Cartão de Crédito)</option>
+            <option value="PIX">Somente PIX</option>
+            <option value="BOLETO">Somente Boleto Bancário</option>
+            <option value="CARTAO">Somente Cartão de Crédito</option>
+          </Select>
+        </Field>
+      </form>
     </Modal>
   );
 }

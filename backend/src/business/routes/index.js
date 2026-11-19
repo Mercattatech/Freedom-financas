@@ -181,6 +181,7 @@ function createBizRouter() {
   r.post('/transactions/:id/reopen', finWrite, ah(async (req, res) => res.json(await transactions.reopen(req.ctx, req.params.id))));
   r.post('/transactions/:id/cancel', finWrite, ah(async (req, res) => res.json(await transactions.cancel(req.ctx, req.params.id, req.body || {}))));
   r.post('/transactions/:id/charge', finWrite, ah(async (req, res) => res.json(await transactions.charge(req.ctx, req.params.id, req.body || {}))));
+  r.post('/transactions/:id/sync-asaas', finWrite, ah(async (req, res) => res.json(await transactions.syncAsaas(req.ctx, req.params.id))));
   r.post('/transactions/:id/invoice', finWrite, ah(async (req, res) => res.json(await invoices.issueInvoice(req.ctx, req.params.id, req.body || {}))));
   r.get('/transactions/:id/invoice', ah(async (req, res) => res.json(await invoices.syncInvoiceStatus(req.ctx, req.params.id))));
   r.post('/transactions/:id/invoice/cancel', finWrite, ah(async (req, res) => res.json(await invoices.cancelInvoice(req.ctx, req.params.id, req.body || {}))));
@@ -207,6 +208,7 @@ function createBizRouter() {
   r.post('/contracts/:id/status', ctWrite, ah(async (req, res) => res.json(await contracts.setStatus(req.ctx, req.params.id, req.body?.status, req.body || {}))));
   r.post('/contracts/:id/readjust', ctWrite, ah(async (req, res) => res.json(await contracts.readjust(req.ctx, req.params.id, req.body || {}))));
   r.post('/contracts/:id/generate', ctWrite, ah(async (req, res) => res.json(await contracts.generateRecurring(req.ctx, req.params.id, parseInt(req.body?.meses || 2, 10)))));
+  r.post('/contracts/:id/sync-asaas', ctWrite, ah(async (req, res) => res.json(await contracts.syncAsaas(req.ctx, req.params.id))));
 
   // Propostas
   const comWrite = requirePerm('comercial:write');

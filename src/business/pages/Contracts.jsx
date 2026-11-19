@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Repeat, Play, Pause, XCircle, Percent, Clock3, Receipt, X } from 'lucide-react';
+import { Plus, Repeat, Play, Pause, XCircle, Percent, Clock3, Receipt, X, RefreshCw, Link2, Copy, ExternalLink, Share2, AlertTriangle, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
 import { PageHeader, Button, Field, Input, Select, Textarea, MoneyInput, Modal, StatusPill, Money, Empty, Loading, ErrorBox, SearchInput, useDebounced, Panel, MarginRuler, cx } from '../components/ui';
@@ -97,8 +98,30 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
     <Modal open onClose={onClose} width={760} title={isNew ? 'Novo contrato' : 'Editar contrato'}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit" form="ctform" loading={save.isPending}>{isNew ? (f.ativar ? 'Criar e ativar faturamento' : 'Criar como rascunho') : 'Salvar'}</Button></>}>
       <form id="ctform" onSubmit={submit} className="grid sm:grid-cols-2 gap-4">
-        {isNew && <Field label="Cliente"><Select required value={f.client_id} onChange={set('client_id')}><option value="">Selecione…</option>{L.clients.map((c) => <option key={c.id} value={c.id}>{c.nome_fantasia || c.nome}</option>)}</Select></Field>}
+        {isNew && (
+          <Field label="Cliente">
+            <Select required value={f.client_id} onChange={set('client_id')}>
+              <option value="">Selecione…</option>
+              {L.clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome_fantasia || c.nome}{c.documento ? ` (${c.documento})` : ' — sem CPF/CNPJ'}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label="Título" className={isNew ? '' : 'sm:col-span-2'}><Input value={f.titulo} onChange={set('titulo')} placeholder="Gestão de marketing — Locadora Alfa" /></Field>
+        
+        {f.client_id && !L.clients.find((c) => c.id === f.client_id)?.documento && f.cobrar_via_asaas && (
+          <div className="sm:col-span-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">Atenção: Cliente sem CPF/CNPJ</span>
+              O Asaas exige que o cliente tenha CPF ou CNPJ cadastrado para gerar assinaturas e cobranças automáticas. Certifique-se de informar o CPF/CNPJ do cliente em Clientes.
+            </div>
+          </div>
+        )}
+
         <div className="sm:col-span-2 inline-flex rounded-lg border border-[var(--line)] p-0.5 w-fit">
           {[['RECORRENTE', 'Recorrente (assinatura)'], ['PONTUAL', 'Pontual (projeto)']].map(([k, l]) => <button type="button" key={k} onClick={() => setF({ ...f, tipo: k })} className={cx('px-4 h-9 rounded-md text-sm font-semibold', f.tipo === k ? 'bg-[var(--ink)] text-[var(--surface)]' : 'text-[var(--ink-2)]')}>{l}</button>)}
         </div>
@@ -111,7 +134,15 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
         <Field label="Início"><Input type="date" value={f.data_inicio} onChange={set('data_inicio')} /></Field>
         <Field label="Término (opcional)"><Input type="date" value={f.data_fim} onChange={set('data_fim')} /></Field>
         <Field label="Dia de vencimento"><Input type="number" min={1} max={28} value={f.dia_vencimento} onChange={set('dia_vencimento')} /></Field>
-        <Field label="Forma de pagamento"><Select value={f.forma_pagamento} onChange={set('forma_pagamento')}><option value="BOLETO">Boleto</option><option value="PIX">PIX</option><option value="CARTAO">Cartão de crédito</option><option value="UNDEFINED">Cliente escolhe</option><option value="MANUAL">Manual (fora do Asaas)</option></Select></Field>
+        <Field label="Forma de pagamento">
+          <Select value={f.forma_pagamento} onChange={set('forma_pagamento')}>
+            <option value="UNDEFINED">Todas (Cliente escolhe PIX, Boleto ou Cartão no Asaas)</option>
+            <option value="BOLETO">Boleto Bancário</option>
+            <option value="PIX">PIX</option>
+            <option value="CARTAO">Cartão de Crédito</option>
+            <option value="MANUAL">Manual (fora do Asaas)</option>
+          </Select>
+        </Field>
         <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-4 grid sm:grid-cols-3 gap-4">
           <p className="sm:col-span-3 text-sm font-bold">Orçamento de margem <span className="font-normal text-[var(--muted)]">para comparar previsto × realizado</span></p>
           <Field label="Custo direto previsto/mês"><MoneyInput value={f.custo_previsto_mensal} onChange={set('custo_previsto_mensal')} /></Field>
@@ -125,7 +156,21 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
           <Field label="Índice de reajuste"><Select value={f.indice_reajuste} onChange={set('indice_reajuste')}><option value="IPCA">IPCA</option><option value="IGPM">IGP-M</option><option value="FIXO">Percentual fixo</option></Select></Field>
           <Field label="Próximo reajuste"><Input type="date" value={f.data_reajuste} onChange={set('data_reajuste')} /></Field>
         </>}
-        <label className="flex items-start gap-2 text-sm font-medium sm:col-span-2"><input type="checkbox" checked={f.cobrar_via_asaas} onChange={set('cobrar_via_asaas')} className="w-4 h-4 mt-0.5" disabled={!company?.asaas_configurado} /><span>Cobrar pelo Asaas{!company?.asaas_configurado && <span className="block text-xs text-[var(--muted)] font-normal">Configure a chave do Asaas em Configurações para habilitar.</span>}<span className="block text-xs text-[var(--muted)] font-normal">Recorrente vira assinatura no Asaas; os pagamentos chegam aqui pelo webhook.</span></span></label>
+        <div className="sm:col-span-2 p-3 rounded-lg border border-indigo-500/20 bg-indigo-50/40 dark:bg-indigo-950/20">
+          <label className="flex items-start gap-2 text-sm font-medium cursor-pointer">
+            <input type="checkbox" checked={f.cobrar_via_asaas} onChange={set('cobrar_via_asaas')} className="w-4 h-4 mt-0.5 accent-indigo-600" disabled={!company?.asaas_configurado} />
+            <div>
+              <span className="font-bold flex items-center gap-1.5 text-indigo-900 dark:text-indigo-300">
+                <Repeat className="w-4 h-4 text-indigo-600" /> Cobrar pelo Asaas (Assinatura Automática)
+              </span>
+              {!company?.asaas_configurado ? (
+                <span className="block text-xs text-[var(--muted)] font-normal mt-0.5">Configure a chave do Asaas em Configurações para habilitar a integração.</span>
+              ) : (
+                <span className="block text-xs text-[var(--muted)] font-normal mt-0.5">Cria a assinatura no Asaas automaticamente ao ativar; os pagamentos periódicos chegam aqui pelo webhook com baixa e tarifas automáticas.</span>
+              )}
+            </div>
+          </label>
+        </div>
         {isNew && <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2"><input type="checkbox" checked={f.ativar} onChange={set('ativar')} className="w-4 h-4" />Ativar agora e gerar o faturamento</label>}
         <Field label="Observações" className="sm:col-span-2"><Textarea value={f.observacoes} onChange={set('observacoes')} rows={2} /></Field>
       </form>
@@ -165,6 +210,10 @@ export function ContractDetail() {
   const [hours, setHours] = useState(false);
   const status = useBizMutation(({ s, motivo }) => biz(`/contracts/${id}/status`, { method: 'POST', body: { status: s, motivo } }), { success: (c) => `Contrato ${({ ATIVO: 'ativado', PAUSADO: 'pausado', CANCELADO: 'cancelado', ENCERRADO: 'encerrado' })[c.status] || 'atualizado'}` });
   const delEntry = useBizMutation((eid) => biz(`/time-entries/${eid}`, { method: 'DELETE' }), { success: 'Apontamento removido' });
+  const syncAsaas = useBizMutation(() => biz(`/contracts/${id}/sync-asaas`, { method: 'POST' }), {
+    success: 'Cobranças da assinatura sincronizadas com o Asaas!',
+    onSuccess: () => q.refetch(),
+  });
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} />;
   const c = q.data;
@@ -176,6 +225,11 @@ export function ContractDetail() {
       <PageHeader title={`#${c.numero} ${c.titulo}`} actions={w && <>
         {c.status === 'RASCUNHO' && <Button icon={Play} variant="success" loading={status.isPending} onClick={() => status.mutate({ s: 'ATIVO' })}>Ativar e faturar</Button>}
         {c.status === 'ATIVO' && c.tipo === 'RECORRENTE' && <Button variant="secondary" icon={Percent} onClick={() => setReadj(true)}>Reajustar</Button>}
+        {c.tipo === 'RECORRENTE' && c.asaas_subscription_id && (
+          <Button variant="secondary" icon={RefreshCw} loading={syncAsaas.isPending} onClick={() => syncAsaas.mutate()} title="Sincronizar pagamentos da assinatura no Asaas">
+            Sincronizar Asaas
+          </Button>
+        )}
         {c.status === 'ATIVO' && <Button variant="secondary" icon={Pause} onClick={() => status.mutate({ s: 'PAUSADO' })}>Pausar</Button>}
         {c.status === 'PAUSADO' && <Button variant="secondary" icon={Play} onClick={() => status.mutate({ s: 'ATIVO' })}>Retomar</Button>}
         {['ATIVO', 'PAUSADO'].includes(c.status) && <Button variant="danger" icon={XCircle} onClick={() => { const m = window.prompt('Motivo do cancelamento (aparece no relatório de churn):'); if (m !== null) status.mutate({ s: 'CANCELADO', motivo: m }); }}>Cancelar</Button>}
@@ -191,6 +245,57 @@ export function ContractDetail() {
         </div>
       </PageHeader>
 
+      {c.tipo === 'RECORRENTE' && c.asaas_subscription_id && (
+        <div className="mb-5 p-4 rounded-xl border border-indigo-500/20 bg-indigo-50/50 dark:bg-indigo-950/20 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600/10 flex items-center justify-center">
+                <Repeat className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <span className="text-xs text-[var(--muted)] block">Assinatura Asaas Integrada</span>
+                <span className="font-bold text-sm text-[var(--ink)]">#{c.asaas_subscription_id}</span>
+              </div>
+              <span className="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-300">
+                {c.status === 'ATIVO' ? 'Assinatura Ativa' : c.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" icon={RefreshCw} loading={syncAsaas.isPending} onClick={() => syncAsaas.mutate()}>
+                Sincronizar com Asaas
+              </Button>
+            </div>
+          </div>
+
+          {(() => {
+            const pendingTx = c.lancamentos?.find((l) => l.status === 'PENDENTE' && l.asaas_invoice_url);
+            if (!pendingTx) return null;
+            return (
+              <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--line)] flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[var(--muted)] block">Fatura atual com vencimento em {date(pendingTx.vencimento)}:</span>
+                  <span className="font-bold text-sm num">{money(pendingTx.valor)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" icon={Copy} onClick={() => { navigator.clipboard.writeText(pendingTx.asaas_invoice_url); toast.success('Link de pagamento copiado!'); }}>
+                    Copiar Link
+                  </Button>
+                  <Button size="sm" variant="secondary" icon={ExternalLink} onClick={() => window.open(pendingTx.asaas_invoice_url, '_blank')}>
+                    Abrir Fatura
+                  </Button>
+                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" icon={Share2} onClick={() => {
+                    const text = encodeURIComponent(`Olá! Segue o link da sua fatura (${pendingTx.descricao}) no valor de R$ ${money(pendingTx.valor)}: ${pendingTx.asaas_invoice_url}`);
+                    window.open(`https://wa.me/?text=${text}`, '_blank');
+                  }}>
+                    Enviar WhatsApp
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
       {c.margem_mes !== undefined && (
         <div className="grid lg:grid-cols-2 gap-5 mb-5">
           <MarginCard title="Margem neste mês" m={c.margem_mes} meta={meta} />
@@ -204,7 +309,32 @@ export function ContractDetail() {
             <div className="overflow-x-auto"><table className="tbl">
               <thead><tr><th>Vencimento</th><th>Descrição</th><th className="r">Valor</th><th>Situação</th></tr></thead>
               <tbody>{c.lancamentos.map((t) => (
-                <tr key={t.id}><td className="num">{date(t.vencimento)}</td><td>{t.descricao}<div className="text-xs text-[var(--muted)]">{t.account?.nome}</div></td><td className="r"><Money value={t.tipo === 'RECEITA' ? t.valor : -t.valor} colored /></td><td><StatusPill status={t.situacao} /></td></tr>
+                <tr key={t.id}>
+                  <td className="num">{date(t.vencimento)}</td>
+                  <td>
+                    <div className="flex items-center gap-1.5">
+                      <span>{t.descricao}</span>
+                      {t.asaas_invoice_url && (
+                        <button
+                          type="button"
+                          onClick={() => { navigator.clipboard.writeText(t.asaas_invoice_url); toast.success('Link da fatura copiado!'); }}
+                          className="text-[var(--result)] hover:underline inline-flex items-center gap-0.5 text-xs font-semibold ml-1"
+                          title="Copiar link da fatura"
+                        >
+                          <Link2 className="w-3 h-3" /> Link
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-xs text-[var(--muted)]">{t.account?.nome}</div>
+                  </td>
+                  <td className="r"><Money value={t.tipo === 'RECEITA' ? t.valor : -t.valor} colored /></td>
+                  <td>
+                    <div className="flex items-center gap-1.5">
+                      <StatusPill status={t.situacao} />
+                      {t.asaas_payment_id && <span className="text-[10px] text-[var(--muted)]">Asaas</span>}
+                    </div>
+                  </td>
+                </tr>
               ))}</tbody>
             </table></div>
           )}

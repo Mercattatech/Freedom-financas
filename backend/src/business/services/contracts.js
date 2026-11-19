@@ -213,6 +213,11 @@ async function activate(ctx, id) {
         cycle: c.periodicidade, description: c.titulo, externalReference: `contract:${c.id}`, endDate: c.data_fim,
       });
       await prisma.bizContract.update({ where: { id }, data: { asaas_subscription_id: sub.id } });
+      try {
+        await syncAsaas(ctx, id);
+      } catch (err) {
+        console.warn('[biz] sincronização inicial da assinatura Asaas:', err.message);
+      }
     } else if (!useAsaas) {
       await generateRecurring(ctx, id);
     }
@@ -325,4 +330,25 @@ async function remove(ctx, id) {
   return { success: true };
 }
 
-module.exports = { list, get, create, update, activate, generateRecurring, setStatus, readjust, remove, nextNumber, decorate, mrrDe, mensalDe, INCLUDE };
+/**
+ * Sincroniza as cobranças da assinatura Asaas com o contrato
+ */
+async function syncAsaas(ctx, id) {
+  const c = await get(ctx, id);
+  if (!c.asaas_subscription_id) throw badRequest('Contrato não possui assinatura vinculada no Asaas');
+  const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+  if (!company?.asaas_api_key) throw badRequest('Asaas não configurado');
+  const asaas = new AsaasClient(company);
+  const paymentsRes = await asaas.listSubscriptionPayments(c.asaas_subscription_id);
+  const payments = paymentsRes?.data || [];
+  const asaasSync = require('./asaasSync');
+  let count = 0;
+  for (const p of payments) {
+    await asaasSync.applyPayment(company, `PAYMENT_${p.status}`, p);
+    count++;
+  }
+  await audit(ctx, 'update', 'contrato', id, `Assinatura Asaas ${c.asaas_subscription_id} sincronizada (${count} lançamentos)`);
+  return { ok: true, count, contract: await get(ctx, id) };
+}
+
+module.exports = { list, get, create, update, activate, generateRecurring, setStatus, readjust, remove, syncAsaas, nextNumber, decorate, mrrDe, mensalDe, INCLUDE };
