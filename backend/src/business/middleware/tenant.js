@@ -10,13 +10,32 @@ const API_KEY_PREFIX = 'fbk_';
 async function contextFromApiKey(raw) {
   const key = await prisma.bizApiKey.findUnique({ where: { hash: sha256(raw) } });
   if (!key || key.revogada) throw new HttpError(401, 'Chave de API inválida ou revogada');
-  const member = await prisma.bizCompanyMember.findUnique({
-    where: { company_id_user_id: { company_id: key.company_id, user_id: key.user_id } },
-  });
+  const [member, company] = await Promise.all([
+    prisma.bizCompanyMember.findUnique({
+      where: { company_id_user_id: { company_id: key.company_id, user_id: key.user_id } },
+    }),
+    prisma.bizCompany.findUnique({
+      where: { id: key.company_id },
+      select: { razao_social: true, nome_fantasia: true, plano: true },
+    }),
+  ]);
   if (!member || !member.ativo) throw new HttpError(401, 'O usuário dono desta chave não tem mais acesso à empresa');
+
+  // Verifica se o módulo de IA está ativo na empresa (para monetização de controle por IA)
+  try {
+    const rawCheck = await prisma.$queryRawUnsafe(`SELECT "ia_habilitada" FROM "biz_company" WHERE "id" = $1 LIMIT 1`, key.company_id);
+    if (rawCheck && rawCheck[0] && rawCheck[0].ia_habilitada === false) {
+      throw new HttpError(403, 'O controle por Inteligência Artificial (Claude & ChatGPT) está desativado para esta empresa. Ative o módulo de IA no plano da empresa.');
+    }
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    // Se coluna ainda não existir em ambiente de teste, segue normalmente
+  }
+
   prisma.bizApiKey.update({ where: { id: key.id }, data: { ultimo_uso: new Date() } }).catch(() => {});
   return {
     companyId: key.company_id,
+    companyName: company?.nome_fantasia || company?.razao_social || 'Empresa',
     userId: key.user_id,
     email: member.email,
     // Chave somente leitura rebaixa o papel para LEITURA

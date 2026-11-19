@@ -395,6 +395,97 @@ const TOOLS = [
       return team.createEntry(ctx, { team_member_id: m.id, contract_id: c?.id, horas: a.horas, data: a.data || ymd(today()), descricao: a.descricao });
     },
   },
+
+  // ───────────── Integração Inteligente Asaas e Dashboards ─────────────
+  {
+    name: 'criar_assinatura_asaas', perm: 'financeiro:write',
+    description: 'Cria uma assinatura recorrente no Asaas diretamente a partir de Contas a Receber. Suporta periodicidades (SEMANAL, MENSAL, etc.), cadastra novo cliente na hora se necessário com CPF/CNPJ, gera o contrato e cria a primeira cobrança já com link de pagamento emitido.',
+    schema: {
+      ...idOuNome('cliente'),
+      novo_cliente: z.object({
+        nome: z.string(),
+        cpf_cnpj: z.string().describe('CPF ou CNPJ obrigatório para o Asaas'),
+        email: z.string().optional(),
+        celular: z.string().optional(),
+      }).optional().describe('Informe para cadastrar um novo cliente automaticamente caso ainda não exista'),
+      valor: z.number().describe('Valor de cada ciclo de cobrança'),
+      periodicidade: z.enum(['SEMANAL', 'QUINZENAL', 'MENSAL', 'BIMESTRAL', 'TRIMESTRAL', 'SEMESTRAL', 'ANUAL']).optional().default('MENSAL'),
+      vencimento: z.string().optional().describe('Data do primeiro vencimento AAAA-MM-DD (padrão: hoje)'),
+      descricao: z.string().optional().describe('Descrição da assinatura'),
+      competencia: z.string().optional(),
+      formas_pagamento: z.array(z.string()).optional().describe('Formas aceitas pelo Asaas (ex: BOLETO, CREDIT_CARD, PIX)'),
+    },
+    handler: async (ctx, a) => {
+      let clientId = a.cliente_id;
+      if (!clientId && a.cliente) {
+        const found = await R.client(ctx, null, a.cliente);
+        clientId = found?.id;
+      }
+      return transactions.createSubscription(ctx, {
+        client_id: clientId,
+        novo_cliente: a.novo_cliente,
+        valor: a.valor,
+        periodicidade: a.periodicidade || 'MENSAL',
+        vencimento: a.vencimento,
+        descricao: a.descricao,
+        competencia: a.competencia,
+        billing_types: a.formas_pagamento,
+      });
+    },
+  },
+  {
+    name: 'sincronizar_asaas', perm: 'financeiro:write',
+    description: 'Consulta o status atual no Asaas sob demanda para uma cobrança (conta a receber) ou assinatura de contrato, atualizando se já foi pago, data de quitação, tarifas descontadas, código PIX e PDF do boleto.',
+    schema: {
+      lancamento_id: z.string().optional().describe('ID do lançamento de conta a receber'),
+      ...idOuNome('contrato'),
+    },
+    handler: async (ctx, a) => {
+      if (a.lancamento_id) {
+        return transactions.syncAsaas(ctx, a.lancamento_id);
+      }
+      const c = a.contrato_id || a.contrato ? await R.contract(ctx, a.contrato_id, a.contrato) : null;
+      if (c) {
+        return contracts.syncAsaas(ctx, c.id);
+      }
+      throw new Error('Informe lancamento_id ou contrato');
+    },
+  },
+  {
+    name: 'gerar_link_pagamento', perm: 'financeiro:write',
+    description: 'Gera cobrança no Asaas com fatura web, QR Code PIX e boleto bancário para uma conta a receber em aberto. Se o cliente não possuir CPF/CNPJ previamente cadastrado, informe no parâmetro cpf_cnpj.',
+    schema: {
+      lancamento_id: z.string().describe('ID do lançamento'),
+      cpf_cnpj: z.string().optional().describe('CPF ou CNPJ do cliente caso falte no cadastro'),
+      forma_pagamento: z.enum(['BOLETO', 'PIX', 'CARTAO', 'UNDEFINED']).optional(),
+    },
+    handler: async (ctx, a) => {
+      const t = await transactions.charge(ctx, a.lancamento_id, {
+        forma_pagamento: a.forma_pagamento,
+        client_data: a.cpf_cnpj ? { cpfCnpj: a.cpf_cnpj } : undefined,
+      });
+      return {
+        ...enxuto(t),
+        link_fatura: t.asaas_invoice_url,
+        pix_copia_e_cola: t.asaas_pix_payload,
+        boleto_url: t.asaas_boleto_url,
+        status_asaas: t.asaas_status,
+      };
+    },
+  },
+  {
+    name: 'dashboard_financeiro', perm: 'relatorios:read',
+    description: 'Retorna um dashboard executivo consolidado com indicadores financeiros em tempo real e filtros de período: hoje, semana, 15d (últimos 15 dias), 30d (últimos 30 dias), mes (mês atual) ou personalizado (de/até). Traz totais a receber, a pagar, saldo, vencidos, taxas e situação das cobranças Asaas.',
+    schema: {
+      periodo: z.enum(['hoje', 'semana', '15d', '30d', 'mes', 'personalizado']).optional().default('mes'),
+      de: z.string().optional().describe('Data de início AAAA-MM-DD (se personalizado)'),
+      ate: z.string().optional().describe('Data de término AAAA-MM-DD (se personalizado)'),
+    },
+    handler: async (ctx, a) => {
+      const { getAiDashboard } = require('../services/aiBridge');
+      return getAiDashboard(ctx, a);
+    },
+  },
 ];
 
 module.exports = { TOOLS };

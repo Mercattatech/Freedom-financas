@@ -566,6 +566,7 @@ model BizCompany {
   proposta_rodape        String?
   // SaaS
   plano                  String   @default("TRIAL") // TRIAL | ESSENCIAL | PRO | ENTERPRISE
+  ia_habilitada          Boolean  @default(true) // Módulo IA (MCP / Claude / ChatGPT)
   ativo                  Boolean  @default(true)
   created_by             String   // user id
   created_date           DateTime @default(now())

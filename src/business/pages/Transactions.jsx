@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle, Pencil, Repeat, QrCode, Zap } from 'lucide-react';
+import { Plus, Wallet, Link2, Undo2, Ban, Trash2, Send, Receipt, Copy, Barcode, ExternalLink, Share2, Check, Tag, X, FileText, Download, RefreshCw, AlertTriangle, Pencil, Repeat, QrCode, Zap, LayoutDashboard, ChevronUp, ChevronDown, TrendingUp, TrendingDown, Layers, PieChart, Clock, Calendar, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -9,6 +9,437 @@ import { useLookups, FORMAS, GRUPOS_DRE } from '../components/lookups';
 import { money, date, todayYmd, ymd, currentYm } from '../format';
 
 const SITUACOES = [['ABERTO', 'Em aberto'], ['VENCIDO', 'Vencidos'], ['A_VENCER', 'A vencer'], ['CONFIRMADO', 'Confirmados'], ['PAGO', 'Pagos'], ['', 'Todos']];
+const PERIOD_PRESETS = [
+  ['TODOS', 'Todos'],
+  ['HOJE', 'Hoje'],
+  ['SEMANA', 'Semana'],
+  ['15D', '15 dias'],
+  ['MES', 'Este mês'],
+  ['30D', '30 dias'],
+  ['PERSONALIZADO', 'Personalizado'],
+];
+
+function TransactionsDashboard({ items = [], resumo = {}, situacao = '', tipo = 'RECEITA', from = '', to = '', periodoPreset = 'TODOS' }) {
+  const receita = tipo === 'RECEITA';
+  const [expanded, setExpanded] = useState(true);
+
+  // Análise detalhada dos itens filtrados na aba e período ativos
+  const stats = useMemo(() => {
+    const totalItens = items.length;
+    let somaTotal = 0;
+    let somaSaldo = 0;
+    let somaPago = 0;
+    let somaTaxas = 0;
+    let comAsaasQtd = 0;
+    let comAsaasValor = 0;
+    let comPixQtd = 0;
+    let comBoletoQtd = 0;
+    let somaDiasAtraso = 0;
+    let maxDiasAtraso = 0;
+    let atrasadosCount = 0;
+    let pagosEmDiaCount = 0;
+    let minVal = Infinity;
+    let maxVal = 0;
+
+    const formasMap = {};
+    const clientesMap = {};
+    const agingMap = {
+      vencidoMais30: 0,
+      vencidoAte30: 0,
+      venceHoje: 0,
+      vence7d: 0,
+      venceFuturo: 0,
+    };
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const hojeYmd = todayYmd();
+
+    for (const t of items) {
+      const val = Number(t.valor) || 0;
+      const saldo = Number(t.saldo ?? t.valor) || 0;
+      const pago = Number(t.valor_pago) || 0;
+      const taxa = Number(t.taxa) || 0;
+      const atraso = Number(t.dias_atraso) || 0;
+
+      somaTotal += val;
+      somaSaldo += saldo;
+      somaPago += pago;
+      somaTaxas += taxa;
+
+      if (val < minVal) minVal = val;
+      if (val > maxVal) maxVal = val;
+
+      if (t.asaas_payment_id || t.asaas_invoice_url) {
+        comAsaasQtd += 1;
+        comAsaasValor += val;
+      }
+      if (t.asaas_pix_payload) comPixQtd += 1;
+      if (t.asaas_boleto_url) comBoletoQtd += 1;
+
+      if (atraso > 0) {
+        atrasadosCount += 1;
+        somaDiasAtraso += atraso;
+        if (atraso > maxDiasAtraso) maxDiasAtraso = atraso;
+      }
+
+      if (t.status === 'PAGO' && t.data_pagamento && t.vencimento) {
+        if (String(t.data_pagamento).slice(0, 10) <= String(t.vencimento).slice(0, 10)) {
+          pagosEmDiaCount += 1;
+        }
+      }
+
+      // Forma de pagamento
+      const formaKey = t.forma_pagamento || t.asaas_billing_type || 'OUTROS';
+      if (!formasMap[formaKey]) formasMap[formaKey] = { label: formaKey, count: 0, total: 0 };
+      formasMap[formaKey].count += 1;
+      formasMap[formaKey].total += val;
+
+      // Cliente / Fornecedor
+      const pessoaNome = (receita ? (t.client?.nome || t.client?.nome_fantasia) : t.supplier?.nome) || 'Não identificado';
+      if (!clientesMap[pessoaNome]) clientesMap[pessoaNome] = { nome: pessoaNome, count: 0, total: 0 };
+      clientesMap[pessoaNome].count += 1;
+      clientesMap[pessoaNome].total += val;
+
+      // Aging
+      const vencStr = String(t.vencimento || '').slice(0, 10);
+      if (vencStr) {
+        if (vencStr < hojeYmd) {
+          if (atraso > 30) agingMap.vencidoMais30 += saldo;
+          else agingMap.vencidoAte30 += saldo;
+        } else if (vencStr === hojeYmd) {
+          agingMap.venceHoje += saldo;
+        } else {
+          const diffDays = Math.ceil((new Date(vencStr) - hoje) / 86400000);
+          if (diffDays <= 7) agingMap.vence7d += saldo;
+          else agingMap.venceFuturo += saldo;
+        }
+      }
+    }
+
+    const valorEfetivo = situacao === 'PAGO' ? somaPago : (situacao === 'VENCIDO' || situacao === 'ABERTO' || situacao === 'A_VENCER' ? somaSaldo : somaTotal);
+    const ticketMedio = totalItens > 0 ? valorEfetivo / totalItens : 0;
+    const mediaAtraso = atrasadosCount > 0 ? Math.round(somaDiasAtraso / atrasadosCount) : 0;
+    const taxaPontualidade = items.filter((t) => t.status === 'PAGO').length > 0
+      ? Math.round((pagosEmDiaCount / items.filter((t) => t.status === 'PAGO').length) * 100)
+      : 100;
+
+    const formasArray = Object.values(formasMap).sort((a, b) => b.total - a.total);
+    const topPessoas = Object.values(clientesMap).sort((a, b) => b.total - a.total).slice(0, 5);
+
+    return {
+      totalItens,
+      somaTotal,
+      somaSaldo,
+      somaPago,
+      somaTaxas,
+      valorEfetivo,
+      ticketMedio,
+      minVal: minVal === Infinity ? 0 : minVal,
+      maxVal,
+      comAsaasQtd,
+      comAsaasValor,
+      comPixQtd,
+      comBoletoQtd,
+      atrasadosCount,
+      mediaAtraso,
+      maxDiasAtraso,
+      taxaPontualidade,
+      formasArray,
+      topPessoas,
+      agingMap,
+      clientesCount: Object.keys(clientesMap).length,
+    };
+  }, [items, situacao, receita]);
+
+  // Labels e métricas especializadas por aba
+  const infoAba = useMemo(() => {
+    switch (situacao) {
+      case 'ABERTO':
+        return {
+          titulo: receita ? 'Dashboard de Contas a Receber em Aberto' : 'Dashboard de Contas a Pagar em Aberto',
+          kpi4Titulo: 'Previsão de Entrada',
+          kpi4Valor: money(stats.somaSaldo),
+          kpi4Sub: `${stats.atrasadosCount} vencidas • ${stats.totalItens - stats.atrasadosCount} a vencer`,
+        };
+      case 'VENCIDO':
+        return {
+          titulo: receita ? 'Dashboard de Inadimplência e Cobrança' : 'Dashboard de Contas Vencidas em Atraso',
+          kpi4Titulo: 'Atraso Médio da Carteira',
+          kpi4Valor: `${stats.mediaAtraso} dias`,
+          kpi4Sub: `Pior caso: ${stats.maxDiasAtraso} dias de atraso`,
+        };
+      case 'A_VENCER':
+        return {
+          titulo: receita ? 'Dashboard de Recebimentos Futuros' : 'Dashboard de Pagamentos Futuros',
+          kpi4Titulo: 'Vencendo nos Próximos 7 Dias',
+          kpi4Valor: money(stats.agingMap.vence7d + stats.agingMap.venceHoje),
+          kpi4Sub: `Hoje: ${money(stats.agingMap.venceHoje)}`,
+        };
+      case 'CONFIRMADO':
+        return {
+          titulo: 'Dashboard de Cobranças Confirmadas (Asaas)',
+          kpi4Titulo: 'Tarifas Asaas Estimadas',
+          kpi4Valor: money(stats.somaTaxas),
+          kpi4Sub: `Líquido a receber: ${money(stats.valorEfetivo - stats.somaTaxas)}`,
+        };
+      case 'PAGO':
+        return {
+          titulo: receita ? 'Dashboard de Recebimentos Realizados' : 'Dashboard de Pagamentos Realizados',
+          kpi4Titulo: 'Pontualidade de Pagamento',
+          kpi4Valor: `${stats.taxaPontualidade}% em dia`,
+          kpi4Sub: `Tarifas descontadas: ${money(stats.somaTaxas)}`,
+        };
+      default:
+        return {
+          titulo: receita ? 'Dashboard Consolidado de Contas a Receber' : 'Dashboard Consolidado de Contas a Pagar',
+          kpi4Titulo: receita ? 'Taxa de Liquidação' : 'Taxa de Execução',
+          kpi4Valor: `${resumo.total > 0 ? Math.round((Number(resumo.pago || 0) / Number(resumo.total)) * 100) : 0}%`,
+          kpi4Sub: `${money(resumo.pago || 0)} quitados de ${money(resumo.total || 0)}`,
+        };
+    }
+  }, [situacao, receita, stats, resumo]);
+
+  const periodoLabel = {
+    HOJE: 'Hoje (do dia)',
+    SEMANA: 'Esta semana',
+    '15D': 'Últimos 15 dias',
+    MES: 'Este mês',
+    '30D': 'Últimos 30 dias',
+    PERSONALIZADO: `Personalizado (${date(from)} até ${date(to)})`,
+    TODOS: 'Todo o período',
+  }[periodoPreset] || 'Período ativo';
+
+  const formaCor = (k) => {
+    switch (k) {
+      case 'PIX': return 'bg-emerald-500 text-emerald-700 dark:text-emerald-300';
+      case 'BOLETO': return 'bg-blue-500 text-blue-700 dark:text-blue-300';
+      case 'CARTAO':
+      case 'CREDIT_CARD': return 'bg-purple-500 text-purple-700 dark:text-purple-300';
+      case 'TRANSFERENCIA': return 'bg-amber-500 text-amber-700 dark:text-amber-300';
+      default: return 'bg-slate-400 text-slate-700 dark:text-slate-300';
+    }
+  };
+
+  return (
+    <div className="mb-6 rounded-2xl border border-[var(--line)] bg-[var(--surface)] shadow-sm overflow-hidden transition-all">
+      {/* Header do Dashboard */}
+      <div className="px-5 py-4 border-b border-[var(--line)] flex flex-wrap items-center justify-between gap-3 bg-[var(--paper)]">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 text-white flex items-center justify-center shadow-sm">
+            <LayoutDashboard className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-[var(--ink)] flex items-center gap-2">
+              {infoAba.titulo}
+            </h3>
+            <p className="text-xs text-[var(--muted)] flex items-center gap-2">
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">{periodoLabel}</span>
+              <span>•</span>
+              <span>{stats.totalItens} faturas</span>
+              <span>•</span>
+              <span>{stats.clientesCount} {receita ? 'clientes' : 'fornecedores'}</span>
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={expanded ? ChevronUp : ChevronDown}
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? 'Recolher detalhes' : 'Expandir gráficos'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Grid de 4 KPI Cards Modernos */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-5">
+        {/* Card 1: Montante & Volume Total da Aba */}
+        <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--paper)] space-y-1">
+          <div className="flex items-center justify-between text-xs font-medium text-[var(--muted)]">
+            <span>{situacao === 'PAGO' ? (receita ? 'Total Recebido' : 'Total Pago') : (situacao === 'VENCIDO' ? 'Total Vencido' : 'Valor Total')}</span>
+            <Wallet className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] num">
+            {money(stats.valorEfetivo)}
+          </div>
+          <div className="text-xs text-[var(--muted)] flex items-center justify-between pt-1">
+            <span>{stats.totalItens} lançamentos</span>
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+              {resumo.total > 0 ? `${Math.round((stats.valorEfetivo / Number(resumo.total)) * 100)}% da carteira` : '100%'}
+            </span>
+          </div>
+        </div>
+
+        {/* Card 2: Ticket Médio & Faixa de Valores */}
+        <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--paper)] space-y-1">
+          <div className="flex items-center justify-between text-xs font-medium text-[var(--muted)]">
+            <span>Ticket Médio</span>
+            <TrendingUp className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] num">
+            {money(stats.ticketMedio)}
+          </div>
+          <div className="text-xs text-[var(--muted)] flex items-center justify-between pt-1">
+            <span>Menor: <b>{money(stats.minVal)}</b></span>
+            <span>Maior: <b>{money(stats.maxVal)}</b></span>
+          </div>
+        </div>
+
+        {/* Card 3: Asaas & Cobrança Digital */}
+        <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--paper)] space-y-1">
+          <div className="flex items-center justify-between text-xs font-medium text-[var(--muted)]">
+            <span>Cobranças Asaas</span>
+            <Link2 className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] num">
+            {stats.comAsaasQtd} <span className="text-xs font-normal text-[var(--muted)]">faturas</span>
+          </div>
+          <div className="text-xs text-[var(--muted)] flex items-center justify-between pt-1">
+            <span>{money(stats.comAsaasValor)}</span>
+            <span className="font-medium text-purple-600 dark:text-purple-400">
+              {stats.comPixQtd} PIX • {stats.comBoletoQtd} Bol
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: Dinâmico por Aba */}
+        <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--paper)] space-y-1">
+          <div className="flex items-center justify-between text-xs font-medium text-[var(--muted)]">
+            <span>{infoAba.kpi4Titulo}</span>
+            <Layers className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="text-xl sm:text-2xl font-extrabold text-[var(--ink)] num">
+            {infoAba.kpi4Valor}
+          </div>
+          <div className="text-xs text-[var(--muted)] pt-1 truncate">
+            {infoAba.kpi4Sub}
+          </div>
+        </div>
+      </div>
+
+      {/* Painel Expandido: Gráficos e Distribuições Visuais */}
+      {expanded && (
+        <div className="border-t border-[var(--line)] px-5 py-4 bg-[var(--paper)]/50 space-y-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            {/* 1. Meios de Pagamento */}
+            <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-1.5">
+                  <PieChart className="w-4 h-4 text-indigo-600" /> Formas de Pagamento
+                </span>
+                <span className="text-[11px] text-[var(--muted)]">{stats.formasArray.length} modalidades</span>
+              </div>
+
+              {stats.formasArray.length > 0 ? (
+                <>
+                  <div className="h-2.5 w-full rounded-full bg-[var(--line)] overflow-hidden flex">
+                    {stats.formasArray.map((f) => {
+                      const pctVal = stats.valorEfetivo > 0 ? (f.total / stats.valorEfetivo) * 100 : 0;
+                      return (
+                        <div
+                          key={f.label}
+                          style={{ width: `${Math.max(pctVal, 4)}%` }}
+                          className={`${formaCor(f.label).split(' ')[0]} transition-all`}
+                          title={`${f.label}: ${money(f.total)} (${pctVal.toFixed(1)}%)`}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  <div className="space-y-1.5 pt-1">
+                    {stats.formasArray.slice(0, 4).map((f) => {
+                      const pctVal = stats.valorEfetivo > 0 ? ((f.total / stats.valorEfetivo) * 100).toFixed(1) : 0;
+                      return (
+                        <div key={f.label} className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 text-[var(--ink-2)] truncate">
+                            <span className={`w-2 h-2 rounded-full ${formaCor(f.label).split(' ')[0]}`} />
+                            {f.label} ({f.count})
+                          </span>
+                          <span className="font-semibold text-[var(--ink)] num">
+                            {money(f.total)} <span className="text-[10px] text-[var(--muted)] font-normal">({pctVal}%)</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <p className="text-xs text-[var(--muted)] py-4 text-center">Nenhum dado de pagamento no filtro.</p>
+              )}
+            </div>
+
+            {/* 2. Top Clientes / Fornecedores */}
+            <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-emerald-600" /> Top {receita ? 'Clientes' : 'Fornecedores'} no Período
+                </span>
+                <span className="text-[11px] text-[var(--muted)]">Maiores volumes</span>
+              </div>
+
+              {stats.topPessoas.length > 0 ? (
+                <div className="space-y-2">
+                  {stats.topPessoas.map((p) => {
+                    const pctVal = stats.valorEfetivo > 0 ? (p.total / stats.valorEfetivo) * 100 : 0;
+                    return (
+                      <div key={p.nome} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-[var(--ink-2)] font-medium truncate max-w-[170px]">{p.nome}</span>
+                          <span className="font-semibold text-[var(--ink)] num">{money(p.total)}</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-[var(--line)] overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(pctVal, 100)}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--muted)] py-4 text-center">Nenhum registro para exibir ranking.</p>
+              )}
+            </div>
+
+            {/* 3. Aging / Faixas de Vencimento */}
+            <div className="p-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[var(--ink)] flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-rose-600" /> Prazos e Faixas de Vencimento
+                </span>
+                <span className="text-[11px] text-[var(--muted)]">Status cronológico</span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-300">
+                  <span>Vencidos há +30 dias</span>
+                  <b className="num">{money(stats.agingMap.vencidoMais30)}</b>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300">
+                  <span>Vencidos recentes (1 a 30 dias)</span>
+                  <b className="num">{money(stats.agingMap.vencidoAte30)}</b>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/30 text-indigo-800 dark:text-indigo-300">
+                  <span>Vence Hoje</span>
+                  <b className="num">{money(stats.agingMap.venceHoje)}</b>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300">
+                  <span>Próximos 7 dias</span>
+                  <b className="num">{money(stats.agingMap.vence7d)}</b>
+                </div>
+                <div className="flex items-center justify-between p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300">
+                  <span>Futuros (+7 dias)</span>
+                  <b className="num">{money(stats.agingMap.venceFuturo)}</b>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Transactions({ tipo }) {
   const receita = tipo === 'RECEITA';
@@ -19,6 +450,7 @@ export default function Transactions({ tipo }) {
   const [to, setTo] = useState('');
   const [nfseFilter, setNfseFilter] = useState('');
   const [repeticaoFilter, setRepeticaoFilter] = useState('');
+  const [periodoPreset, setPeriodoPreset] = useState('TODOS');
   const [editing, setEditing] = useState(null);
   const [paying, setPaying] = useState(null);
   const [editingClient, setEditingClient] = useState(null);
@@ -76,6 +508,48 @@ export default function Transactions({ tipo }) {
     setSp(k ? { situacao: k } : {});
   };
 
+  const applyPeriodPreset = (preset) => {
+    setPeriodoPreset(preset);
+    setSelectedIds([]);
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    if (preset === 'HOJE') {
+      const t = fmt(now);
+      setFrom(t);
+      setTo(t);
+    } else if (preset === 'SEMANA') {
+      const d = new Date(now);
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      d.setDate(d.getDate() + diff);
+      const start = fmt(d);
+      const end = new Date(d);
+      end.setDate(end.getDate() + 6);
+      setFrom(start);
+      setTo(fmt(end));
+    } else if (preset === '15D') {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 14);
+      setFrom(fmt(d));
+      setTo(fmt(now));
+    } else if (preset === 'MES') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      setFrom(fmt(start));
+      setTo(fmt(end));
+    } else if (preset === '30D') {
+      const d = new Date(now);
+      d.setDate(d.getDate() - 29);
+      setFrom(fmt(d));
+      setTo(fmt(now));
+    } else if (preset === 'TODOS') {
+      setFrom('');
+      setTo('');
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -105,50 +579,132 @@ export default function Transactions({ tipo }) {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">
-          {SITUACOES.map(([k, l]) => (
-            <button key={k || 'all'} onClick={() => onFilterSituacao(k)} className={cx('px-3 h-9 rounded-md text-sm font-semibold', situacao === k ? 'bg-[var(--ink)] text-[var(--surface)]' : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]')}>{l}</button>
-          ))}
+      {/* Barra de Filtros: Abas de Situação + Presets Rápidos de Período + Busca */}
+      <div className="flex flex-col gap-3 mb-5">
+        {/* Linha 1: Abas de Situação + Busca rápida */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5 overflow-x-auto max-w-full">
+            {SITUACOES.map(([k, l]) => (
+              <button
+                key={k || 'all'}
+                onClick={() => onFilterSituacao(k)}
+                className={cx(
+                  'px-3.5 h-9 rounded-md text-sm font-semibold transition-all whitespace-nowrap',
+                  situacao === k
+                    ? 'bg-[var(--ink)] text-[var(--surface)] shadow-sm'
+                    : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]'
+                )}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex-1 max-w-md min-w-[260px]">
+            <SearchInput
+              value={q}
+              onChange={(val) => { setSelectedIds([]); setQ(val); }}
+              placeholder={receita ? 'Buscar descrição ou cliente...' : 'Buscar descrição ou fornecedor...'}
+            />
+          </div>
         </div>
-        <Input type="date" value={from} onChange={(e) => { setSelectedIds([]); setFrom(e.target.value); }} className="w-[150px]" aria-label="Vencimento de" />
-        <Input type="date" value={to} onChange={(e) => { setSelectedIds([]); setTo(e.target.value); }} className="w-[150px]" aria-label="Vencimento até" />
-        {receita && (
-          <Select
-            value={nfseFilter}
-            onChange={(e) => { setSelectedIds([]); setNfseFilter(e.target.value); }}
-            className="w-[160px]"
-            aria-label="Filtro de NFS-e"
-          >
-            <option value="">NFS-e: Todas</option>
-            <option value="AUTHORIZED">NFS-e: Autorizada</option>
-            <option value="SCHEDULED">NFS-e: Agendada</option>
-            <option value="ERROR">NFS-e: Com erro</option>
-          </Select>
-        )}
-        <Select
-          value={repeticaoFilter}
-          onChange={(e) => { setSelectedIds([]); setRepeticaoFilter(e.target.value); }}
-          className="w-[160px]"
-          aria-label="Filtro de repetição"
-        >
-          <option value="">Repetição: Todas</option>
-          <option value="RECORRENTE">Recorrentes</option>
-          <option value="PARCELADO">Parcelados</option>
-          <option value="UNICO">Lançamentos únicos</option>
-        </Select>
-        <SearchInput value={q} onChange={(val) => { setSelectedIds([]); setQ(val); }} placeholder={receita ? 'Buscar descrição ou cliente' : 'Buscar descrição ou fornecedor'} />
+
+        {/* Linha 2: Presets de Período (Hoje, Semana, 15 dias, Mês, 30 dias, Personalizado, Todos) */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+          <div className="flex items-center gap-1.5 text-[var(--muted)] font-medium mr-1">
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <span>Período:</span>
+          </div>
+
+          <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5 overflow-x-auto">
+            {PERIOD_PRESETS.map(([k, l]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => applyPeriodPreset(k)}
+                className={cx(
+                  'px-2.5 h-7 rounded-md text-xs font-semibold transition-all whitespace-nowrap',
+                  periodoPreset === k
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]'
+                )}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {(periodoPreset === 'PERSONALIZADO' || from || to) && (
+            <div className="inline-flex items-center gap-1.5 p-1 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/20">
+              <span className="text-[11px] text-[var(--muted)] pl-1">De:</span>
+              <Input
+                type="date"
+                value={from}
+                onChange={(e) => { setSelectedIds([]); setFrom(e.target.value); setPeriodoPreset('PERSONALIZADO'); }}
+                className="w-[125px] h-7 text-xs"
+                aria-label="Vencimento de"
+              />
+              <span className="text-[11px] text-[var(--muted)]">Até:</span>
+              <Input
+                type="date"
+                value={to}
+                onChange={(e) => { setSelectedIds([]); setTo(e.target.value); setPeriodoPreset('PERSONALIZADO'); }}
+                className="w-[125px] h-7 text-xs"
+                aria-label="Vencimento até"
+              />
+              {(from || to) && (
+                <button
+                  type="button"
+                  onClick={() => applyPeriodPreset('TODOS')}
+                  className="p-1 text-[var(--muted)] hover:text-[var(--bad)] rounded"
+                  title="Limpar período"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="ml-auto flex items-center gap-2">
+            {receita && (
+              <Select
+                value={nfseFilter}
+                onChange={(e) => { setSelectedIds([]); setNfseFilter(e.target.value); }}
+                className="w-[150px] h-8 text-xs"
+                aria-label="Filtro de NFS-e"
+              >
+                <option value="">NFS-e: Todas</option>
+                <option value="AUTHORIZED">NFS-e: Autorizada</option>
+                <option value="SCHEDULED">NFS-e: Agendada</option>
+                <option value="ERROR">NFS-e: Com erro</option>
+              </Select>
+            )}
+
+            <Select
+              value={repeticaoFilter}
+              onChange={(e) => { setSelectedIds([]); setRepeticaoFilter(e.target.value); }}
+              className="w-[150px] h-8 text-xs"
+              aria-label="Filtro de repetição"
+            >
+              <option value="">Repetição: Todas</option>
+              <option value="RECORRENTE">Recorrentes</option>
+              <option value="PARCELADO">Parcelados</option>
+              <option value="UNICO">Lançamentos únicos</option>
+            </Select>
+          </div>
+        </div>
       </div>
 
-      {r && (
-        <div className="flex flex-wrap gap-x-8 gap-y-2 mb-4 text-sm">
-          <span className="text-[var(--muted)]">{r.quantidade} lançamentos</span>
-          <span>Total <b className="num">{money(r.total)}</b></span>
-          <span>{receita ? 'Recebido' : 'Pago'} <b className="num">{money(r.pago)}</b></span>
-          <span>Em aberto <b className="num">{money(r.em_aberto)}</b></span>
-          {r.vencido > 0 && <span className="text-[var(--bad)]">Vencido <b className="num">{money(r.vencido)}</b></span>}
-        </div>
-      )}
+      {/* Dashboard Executivo Completo para a Aba Selecionada */}
+      <TransactionsDashboard
+        items={filteredItems}
+        resumo={r || {}}
+        situacao={situacao}
+        tipo={tipo}
+        from={from}
+        to={to}
+        periodoPreset={periodoPreset}
+      />
 
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] overflow-hidden">
         {list.isLoading ? <Loading /> : list.error ? <div className="p-4"><ErrorBox error={list.error} /></div> : !filteredItems.length ? (

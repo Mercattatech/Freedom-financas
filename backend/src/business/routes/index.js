@@ -21,6 +21,7 @@ const invoices = require('../services/invoices');
 const { AsaasClient } = require('../services/asaas');
 const { runDaily } = require('../jobs/daily');
 const { mcpHandler } = require('../mcp/server');
+const aiBridge = require('../services/aiBridge');
 
 const baseUrl = (req) => process.env.APP_URL || req.headers.origin || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
 const clientIp = (req) => String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
@@ -36,6 +37,7 @@ async function ensureDbColumns() {
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "ia_habilitada" BOOLEAN NOT NULL DEFAULT true;
 
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;
@@ -93,6 +95,9 @@ function createBizRouter() {
   // ── MCP remoto (Streamable HTTP) — autenticado por chave de API ──
   r.all('/mcp', mcpHandler);
 
+  // ── Especificação OpenAPI 3.0 para ChatGPT Custom GPTs / Actions ──
+  r.get('/ai/openapi.json', (req, res) => res.json(aiBridge.generateOpenApiSpec(baseUrl(req))));
+
   // ── Empresas do usuário ──
   r.get('/companies', requireUser, ah(async (req, res) => {
     if (req.ctx) return res.json([await companies.get(req.ctx)]);
@@ -106,6 +111,16 @@ function createBizRouter() {
   r.get('/me', ah(async (req, res) => res.json({ ...req.ctx, empresa: await companies.get(req.ctx) })));
   r.get('/company', ah(async (req, res) => res.json(await companies.get(req.ctx))));
   r.put('/company', requirePerm('config:write'), ah(async (req, res) => res.json(await companies.update(req.ctx, req.body || {}))));
+
+  // ── Inteligência Artificial (ChatGPT Actions & Claude Direct API) ──
+  r.get('/ai/dashboard', ah(async (req, res) => res.json(await aiBridge.getAiDashboard(req.ctx, req.query))));
+  r.post('/ai/execute', ah(async (req, res) => res.json(await aiBridge.executeTool(req.ctx, req.body.tool, req.body.args || {}))));
+  r.post('/ai/receber', requirePerm('financeiro:write'), ah(async (req, res) => res.status(201).json(await aiBridge.executeTool(req.ctx, 'criar_conta_receber', req.body || {}))));
+  r.post('/ai/pagar', requirePerm('financeiro:write'), ah(async (req, res) => res.status(201).json(await aiBridge.executeTool(req.ctx, 'criar_conta_pagar', req.body || {}))));
+  r.post('/ai/assinatura-asaas', requirePerm('financeiro:write'), ah(async (req, res) => res.status(201).json(await aiBridge.executeTool(req.ctx, 'criar_assinatura_asaas', req.body || {}))));
+  r.post('/ai/sincronizar-asaas', requirePerm('financeiro:write'), ah(async (req, res) => res.json(await aiBridge.executeTool(req.ctx, 'sincronizar_asaas', req.body || {}))));
+  r.post('/ai/gerar-link', requirePerm('financeiro:write'), ah(async (req, res) => res.json(await aiBridge.executeTool(req.ctx, 'gerar_link_pagamento', req.body || {}))));
+  r.post('/ai/baixar', requirePerm('financeiro:write'), ah(async (req, res) => res.json(await aiBridge.executeTool(req.ctx, 'baixar_lancamento', req.body || {}))));
 
   // Asaas
   r.put('/company/asaas', requirePerm('config:write'), ah(async (req, res) => {

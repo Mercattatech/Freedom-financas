@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle, RefreshCw, DownloadCloud, Check, FileText, Info, CheckCheck } from 'lucide-react';
+import { Copy, Plus, KeyRound, ShieldCheck, Trash2, CheckCircle2, AlertTriangle, RefreshCw, DownloadCloud, Check, FileText, Info, CheckCheck, Bot, Sparkles, ExternalLink, Terminal, Cpu, Zap, Code } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -13,7 +13,7 @@ const TABS = [
   ['empresa', 'Empresa e marca'],
   ['asaas', 'Asaas'],
   ['nfse', 'Nota Fiscal (NFS-e)'],
-  ['ia', 'Integração com IA (MCP)'],
+  ['ia', 'Controle por IA (Claude & ChatGPT)'],
   ['contas', 'Plano de contas'],
   ['centros', 'Centros de custo'],
   ['bancos', 'Contas financeiras'],
@@ -408,46 +408,291 @@ function McpTab() {
   const keys = useBizQuery('/api-keys');
   const [novo, setNovo] = useState(null);
   const [created, setCreated] = useState(null);
+  const [activePlatform, setActivePlatform] = useState('claude');
   const create = useBizMutation((body) => biz('/api-keys', { method: 'POST', body }), { onSuccess: (k) => { setNovo(null); setCreated(k); } });
   const revoke = useBizMutation((id) => biz(`/api-keys/${id}`, { method: 'DELETE' }), { success: 'Chave revogada' });
+
   const mcpUrl = `${window.location.origin}/api/biz/mcp`;
-  const copy = (v) => { navigator.clipboard.writeText(v); toast.success('Copiado'); };
+  const openApiUrl = `${window.location.origin}/api/biz/ai/openapi.json`;
+  const copy = (v) => { navigator.clipboard.writeText(v); toast.success('Copiado para a área de transferência'); };
+
+  const claudeSnippet = `{
+  "mcpServers": {
+    "freedom-empresas": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "${mcpUrl}",
+        "--header",
+        "Authorization: Bearer SUA_CHAVE_AQUI"
+      ]
+    }
+  }
+}`;
+
   return (
-    <div className="grid xl:grid-cols-[1fr_420px] gap-5 items-start">
-      <Panel title="Chaves de acesso" action={<Button size="sm" icon={Plus} onClick={() => setNovo({ nome: '', escopo: 'ESCRITA' })}>Nova chave</Button>} pad={false}>
-        {keys.isLoading ? <Loading /> : !(keys.data || []).length ? <Empty icon={KeyRound} title="Nenhuma chave criada" text="Crie uma chave para conectar Claude, ChatGPT ou outro assistente à sua empresa." /> : (
-          <table className="tbl"><thead><tr><th>Nome</th><th>Permissão</th><th>Prefixo</th><th>Último uso</th><th /></tr></thead>
-            <tbody>{keys.data.map((k) => (
-              <tr key={k.id}><td className="font-semibold">{k.nome}</td><td>{k.escopo === 'LEITURA' ? 'Somente leitura' : 'Leitura e escrita'}</td><td className="num text-xs">{k.prefixo}…</td><td className="num">{k.ultimo_uso ? date(k.ultimo_uso) : 'Nunca'}</td>
-                <td className="r">{k.revogada ? <StatusPill status="CANCELADO" label="Revogada" /> : <Button size="sm" variant="danger" icon={Trash2} onClick={() => window.confirm('Revogar esta chave? Assistentes que usam ela perdem o acesso.') && revoke.mutate(k.id)}>Revogar</Button>}</td></tr>
-            ))}</tbody>
-          </table>
-        )}
-      </Panel>
-      <Panel title="Como conectar">
-        <ol className="text-sm text-[var(--ink-2)] space-y-3 list-decimal pl-4">
-          <li>Crie uma chave ao lado. Use "somente leitura" para quem só consulta relatórios.</li>
-          <li>No Claude, abra Configurações › Conectores › Adicionar conector personalizado e informe a URL do servidor MCP:
-            <div className="flex gap-2 mt-2"><Input readOnly value={mcpUrl} className="text-xs num" /><Button variant="secondary" icon={Copy} onClick={() => copy(mcpUrl)} aria-label="Copiar URL" /></div>
-          </li>
-          <li>Envie a chave no cabeçalho <code className="text-xs bg-[var(--line-2)] px-1 rounded">Authorization: Bearer fbk_…</code>. Em apps que só aceitam comando local, use:
-            <pre className="text-[11px] bg-[var(--paper)] border border-[var(--line)] rounded-lg p-2 mt-2 overflow-x-auto">{`npx mcp-remote ${mcpUrl} \\\n  --header "Authorization: Bearer SUA_CHAVE"`}</pre>
-          </li>
-          <li>Pergunte, por exemplo: "Qual a margem dos meus contratos este mês?", "Lança R$ 900 de fotógrafo no contrato da Locadora Alfa" ou "Cria uma proposta de tráfego + social media para a Delta".</li>
-        </ol>
-        <p className="text-xs text-[var(--muted)] mt-4 flex gap-1.5"><ShieldCheck className="w-4 h-4 shrink-0" />Toda ação feita pela IA fica registrada na auditoria com a origem MCP.</p>
-      </Panel>
+    <div className="space-y-6">
+      {/* Banner de Destaque e Monetização do Módulo de IA */}
+      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 text-white p-6 shadow-md relative overflow-hidden">
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" /> Módulo Enterprise de IA & MCP
+            </div>
+            <h2 className="text-xl font-extrabold tracking-tight">
+              Controle Operacional por Inteligência Artificial (Claude & ChatGPT)
+            </h2>
+            <p className="text-sm text-indigo-200/90 leading-relaxed">
+              Opere sua empresa inteira por linguagem natural: crie cobranças, assinaturas no Asaas, dê baixas em contas, consulte margens, DRE e fluxo de caixa direto do Claude ou de um Custom GPT no ChatGPT.
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <span className="text-xs font-semibold px-3 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4" /> Token Corporativo Isolado
+            </span>
+            <span className="text-[11px] text-indigo-300/80">
+              Cada empresa possui chaves únicas com permissão e auditoria completa.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid xl:grid-cols-[1fr_480px] gap-6 items-start">
+        {/* Painel de Tokens da Empresa */}
+        <Panel
+          title="Tokens de Acesso da Empresa"
+          action={
+            <Button size="sm" icon={Plus} onClick={() => setNovo({ nome: '', escopo: 'ESCRITA' })}>
+              Gerar Novo Token IA
+            </Button>
+          }
+          pad={false}
+        >
+          {keys.isLoading ? (
+            <Loading />
+          ) : !(keys.data || []).length ? (
+            <Empty
+              icon={KeyRound}
+              title="Nenhum token corporativo gerado"
+              text="Gere uma chave de acesso para conectar o Claude Desktop, Claude Web ou o ChatGPT à sua empresa."
+            />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Nome / Destino</th>
+                    <th>Escopo</th>
+                    <th>Prefixo do Token</th>
+                    <th>Último uso</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {keys.data.map((k) => (
+                    <tr key={k.id}>
+                      <td className="font-semibold text-sm flex items-center gap-2">
+                        <Bot className="w-4 h-4 text-indigo-600" />
+                        {k.nome}
+                      </td>
+                      <td>
+                        <span className={cx(
+                          'text-xs px-2 py-0.5 rounded font-semibold',
+                          k.escopo === 'LEITURA' ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200' : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200'
+                        )}>
+                          {k.escopo === 'LEITURA' ? 'Somente Leitura' : 'Leitura & Escrita'}
+                        </span>
+                      </td>
+                      <td className="num text-xs font-mono">{k.prefixo}…</td>
+                      <td className="num text-xs">{k.ultimo_uso ? date(k.ultimo_uso) : 'Nunca utilizado'}</td>
+                      <td className="r">
+                        {k.revogada ? (
+                          <StatusPill status="CANCELADO" label="Revogada" />
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            icon={Trash2}
+                            onClick={() => window.confirm('Revogar esta chave de IA? Assistentes conectados a ela perderão o acesso imediatamente.') && revoke.mutate(k.id)}
+                          >
+                            Revogar
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
+        {/* Guias de Conexão: Claude e ChatGPT */}
+        <div className="space-y-4">
+          <div className="flex rounded-xl border border-[var(--line)] bg-[var(--surface)] p-1">
+            <button
+              type="button"
+              onClick={() => setActivePlatform('claude')}
+              className={cx(
+                'flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2',
+                activePlatform === 'claude' ? 'bg-indigo-600 text-white shadow-sm' : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]'
+              )}
+            >
+              <Cpu className="w-4 h-4" /> Anthropic Claude (MCP)
+            </button>
+            <button
+              type="button"
+              onClick={() => setActivePlatform('chatgpt')}
+              className={cx(
+                'flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2',
+                activePlatform === 'chatgpt' ? 'bg-emerald-600 text-white shadow-sm' : 'text-[var(--ink-2)] hover:bg-[var(--line-2)]'
+              )}
+            >
+              <Bot className="w-4 h-4" /> OpenAI ChatGPT (Custom GPT)
+            </button>
+          </div>
+
+          {activePlatform === 'claude' ? (
+            <Panel title="Como conectar no Claude">
+              <div className="text-xs text-[var(--ink-2)] space-y-3.5">
+                <p>
+                  O Claude pode operar via <b>Claude Desktop</b> (no seu computador) ou <b>Claude Web Connectors</b> (versões corporativas/Team).
+                </p>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-[var(--ink)] block">1. URL do Servidor MCP Remoto:</label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={mcpUrl} className="text-xs font-mono" />
+                    <Button variant="secondary" icon={Copy} onClick={() => copy(mcpUrl)}>Copiar</Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-[var(--ink)]">2. Configuração do Claude Desktop (`claude_desktop_config.json`):</label>
+                    <button
+                      type="button"
+                      onClick={() => copy(claudeSnippet)}
+                      className="text-indigo-600 hover:underline font-semibold flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Copiar JSON
+                    </button>
+                  </div>
+                  <pre className="text-[11px] bg-[var(--paper)] border border-[var(--line)] rounded-lg p-2.5 overflow-x-auto font-mono">
+                    {claudeSnippet}
+                  </pre>
+                  <span className="text-[10px] text-[var(--muted)] block">
+                    Substitua <code>SUA_CHAVE_AQUI</code> pelo token gerado ao lado (prefixo <code>fbk_...</code>).
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-[var(--line)] space-y-1">
+                  <span className="font-bold text-[var(--ink)] block">Exemplos de prompts no Claude:</span>
+                  <ul className="list-disc pl-4 space-y-1 text-[var(--muted)]">
+                    <li>"Qual a receita, despesas e inadimplência da empresa este mês?"</li>
+                    <li>"Cria uma assinatura no Asaas de R$ 250/mês para o cliente Alfa."</li>
+                    <li>"Lança R$ 850 de freelancer no contrato da Locadora Beta."</li>
+                  </ul>
+                </div>
+              </div>
+            </Panel>
+          ) : (
+            <Panel title="Como conectar no ChatGPT (Custom GPT / Actions)">
+              <div className="text-xs text-[var(--ink-2)] space-y-3.5">
+                <p>
+                  Você pode criar um assistente personalizado no <b>ChatGPT Plus / Team / Enterprise</b> com todas as ferramentas financeiras da sua empresa.
+                </p>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-[var(--ink)] block">1. URL do Schema OpenAPI 3.0:</label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={openApiUrl} className="text-xs font-mono" />
+                    <Button variant="secondary" icon={Copy} onClick={() => copy(openApiUrl)}>Copiar URL</Button>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 p-3 rounded-lg border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/20">
+                  <span className="font-bold text-emerald-900 dark:text-emerald-300 block">
+                    2. Passo a passo no ChatGPT:
+                  </span>
+                  <ol className="list-decimal pl-4 space-y-1 text-[var(--ink-2)] text-[11px]">
+                    <li>No ChatGPT, acesse <b>Explore GPTs</b> › <b>Create</b>.</li>
+                    <li>Na aba <b>Configure</b>, desça até <b>Actions</b> e clique em <b>Create new action</b>.</li>
+                    <li>Clique em <b>Import from URL</b> e cole a URL do schema acima.</li>
+                    <li>Em <b>Authentication</b>, selecione <b>Bearer</b> e cole seu token gerado ao lado (<code>fbk_...</code>).</li>
+                    <li>Pronto! O ChatGPT agora controla o seu financeiro.</li>
+                  </ol>
+                </div>
+
+                <div className="pt-2 border-t border-[var(--line)] space-y-1">
+                  <span className="font-bold text-[var(--ink)] block">Exemplos de comandos no ChatGPT:</span>
+                  <ul className="list-disc pl-4 space-y-1 text-[var(--muted)]">
+                    <li>"Gera o link de pagamento Asaas com PIX para a fatura pendente do cliente X."</li>
+                    <li>"Me dê um resumo do fluxo de caixa e o DRE dos últimos 30 dias."</li>
+                    <li>"Registra o recebimento de R$ 1.500 da fatura #123."</li>
+                  </ul>
+                </div>
+              </div>
+            </Panel>
+          )}
+
+          <p className="text-xs text-[var(--muted)] flex items-center gap-1.5 px-1">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            Todas as operações feitas pela IA ficam registradas na aba <b>Auditoria</b> com identificação de usuário e parâmetros.
+          </p>
+        </div>
+      </div>
+
       {novo && (
-        <Modal open onClose={() => setNovo(null)} title="Nova chave de acesso" footer={<><Button variant="secondary" onClick={() => setNovo(null)}>Cancelar</Button><Button loading={create.isPending} onClick={() => create.mutate(novo)}>Criar chave</Button></>}>
+        <Modal
+          open
+          onClose={() => setNovo(null)}
+          title="Gerar Novo Token Corporativo de IA"
+          description="Este token autoriza o Claude ou ChatGPT a operar as finanças da sua empresa."
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setNovo(null)}>Cancelar</Button>
+              <Button loading={create.isPending} onClick={() => create.mutate(novo)}>Gerar Token</Button>
+            </>
+          }
+        >
           <div className="space-y-4">
-            <Field label="Nome"><Input value={novo.nome} onChange={(e) => setNovo({ ...novo, nome: e.target.value })} placeholder="Claude do Matheus" /></Field>
-            <Field label="Permissão"><Select value={novo.escopo} onChange={(e) => setNovo({ ...novo, escopo: e.target.value })}><option value="ESCRITA">Leitura e escrita (segue o seu papel)</option><option value="LEITURA">Somente leitura</option></Select></Field>
+            <Field label="Nome da Aplicação / Usuário">
+              <Input
+                value={novo.nome}
+                onChange={(e) => setNovo({ ...novo, nome: e.target.value })}
+                placeholder="Ex.: Claude Desktop - Matheus ou ChatGPT Finanças"
+              />
+            </Field>
+            <Field label="Nível de Permissão">
+              <Select value={novo.escopo} onChange={(e) => setNovo({ ...novo, escopo: e.target.value })}>
+                <option value="ESCRITA">Leitura e Escrita (pode consultar relatórios, criar contas, assinaturas e cobranças)</option>
+                <option value="LEITURA">Somente Leitura (apenas consulta faturamento, relatórios e DRE)</option>
+              </Select>
+            </Field>
           </div>
         </Modal>
       )}
+
       {created && (
-        <Modal open onClose={() => setCreated(null)} title="Chave criada" description="Copie agora. Por segurança, ela não será exibida de novo." footer={<Button onClick={() => setCreated(null)}>Pronto</Button>}>
-          <div className="flex gap-2"><Input readOnly value={created.chave} className="num text-xs" /><Button variant="secondary" icon={Copy} onClick={() => copy(created.chave)} aria-label="Copiar chave" /></div>
+        <Modal
+          open
+          onClose={() => setCreated(null)}
+          title="Token Corporativo Gerado com Sucesso"
+          description="Copie a chave agora. Por motivos de segurança, ela não será exibida novamente após fechar esta janela."
+          footer={<Button onClick={() => setCreated(null)}>Entendido e Copiado</Button>}
+        >
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input readOnly value={created.chave} className="num text-xs font-mono font-bold" />
+              <Button variant="secondary" icon={Copy} onClick={() => copy(created.chave)}>Copiar Token</Button>
+            </div>
+            <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-lg border border-amber-200 dark:border-amber-900/60 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              Guarde este token em local seguro. Utilize-o nas configurações do Claude ou nas Actions do ChatGPT com o cabeçalho Authorization: Bearer {created.chave}.
+            </p>
+          </div>
         </Modal>
       )}
     </div>
