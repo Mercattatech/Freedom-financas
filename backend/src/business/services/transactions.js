@@ -128,6 +128,13 @@ function stepDate(baseDate, i, periodicidade = 'MENSAL') {
 async function create(ctx, data) {
   const tipo = data.tipo;
   if (!['RECEITA', 'DESPESA'].includes(tipo)) throw badRequest('tipo deve ser RECEITA ou DESPESA');
+
+  // Se for criação de assinatura Asaas direta
+  if (tipo === 'RECEITA' && (data.modo === 'ASSINATURA_ASAAS' || data.is_subscription)) {
+    const res = await createSubscription(ctx, data);
+    return res.transactions;
+  }
+
   if (!data.descricao) throw badRequest('Informe a descrição');
   const valor = round2(data.valor);
   if (!(valor > 0)) throw badRequest('Informe um valor maior que zero');
@@ -195,6 +202,132 @@ async function create(ctx, data) {
   }
   const out = await prisma.bizTransaction.findMany({ where: { id: { in: created.map((c) => c.id) } }, include: INCLUDE, orderBy: { vencimento: 'asc' } });
   return out.map(decorate);
+}
+
+/**
+ * Cria uma assinatura recorrente no Asaas diretamente pelo módulo de Contas a Receber.
+ * Vincula ao cliente, cria o contrato correspondente e sincroniza a primeira fatura com link de pagamento.
+ */
+async function createSubscription(ctx, data) {
+  const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId } });
+  if (!company?.asaas_api_key) {
+    throw badRequest('Integração com o Asaas não configurada. Configure sua chave em Configurações › Asaas.');
+  }
+
+  // 1. Resolução do Cliente
+  let client = null;
+  if (data.client_id) {
+    client = await prisma.bizClient.findFirst({ where: { id: data.client_id, company_id: ctx.companyId } });
+    if (!client) throw badRequest('Cliente não encontrado');
+    if (data.client_data && Object.keys(data.client_data).length > 0) {
+      const patch = {};
+      if (data.client_data.documento) patch.documento = String(data.client_data.documento).replace(/\D/g, '');
+      if (data.client_data.email) patch.email = data.client_data.email;
+      if (data.client_data.telefone) patch.telefone = data.client_data.telefone;
+      if (data.client_data.nome) patch.nome = data.client_data.nome;
+      if (Object.keys(patch).length > 0) {
+        client = await prisma.bizClient.update({ where: { id: client.id }, data: patch });
+      }
+    }
+  } else if (data.client_data) {
+    if (!data.client_data.nome) throw badRequest('Informe o nome do cliente');
+    const cleanDoc = String(data.client_data.documento || '').replace(/\D/g, '');
+    if (!cleanDoc || cleanDoc.length < 11) {
+      throw badRequest('O Asaas exige CPF ou CNPJ do cliente para criar assinaturas');
+    }
+    client = await prisma.bizClient.create({
+      data: {
+        company_id: ctx.companyId,
+        nome: data.client_data.nome,
+        documento: cleanDoc,
+        email: data.client_data.email || null,
+        telefone: data.client_data.telefone || null,
+      },
+    });
+  } else {
+    throw badRequest('Informe o cliente para criar a assinatura no Asaas');
+  }
+
+  if (!client.documento) {
+    throw badRequest(`Cadastre o CPF/CNPJ do cliente ${client.nome} para criar a assinatura no Asaas`);
+  }
+
+  // 2. Garante o cliente no Asaas
+  const customerId = await ensureAsaasCustomer(company, client);
+
+  // 3. Validação dos dados da assinatura
+  const valor = round2(data.valor);
+  if (!(valor > 0)) throw badRequest('Informe um valor maior que zero para a assinatura');
+  const venc = toDate(data.vencimento) || today();
+  const periodicidade = (data.periodicidade || 'MENSAL').toUpperCase();
+  const forma = data.forma_pagamento || 'UNDEFINED';
+  const titulo = data.descricao || `Assinatura ${periodicidade.toLowerCase()} — ${client.nome_fantasia || client.nome}`;
+  const diaVenc = venc.getUTCDate();
+
+  // 4. Criação do Contrato
+  const lastCt = await prisma.bizContract.findFirst({ where: { company_id: ctx.companyId }, orderBy: { numero: 'desc' }, select: { numero: true } });
+  const numero = (lastCt?.numero || 0) + 1;
+
+  const contract = await prisma.bizContract.create({
+    data: {
+      company_id: ctx.companyId,
+      numero,
+      titulo,
+      tipo: 'RECORRENTE',
+      status: 'ATIVO',
+      client_id: client.id,
+      valor_recorrente: valor,
+      periodicidade,
+      dia_vencimento: diaVenc,
+      data_inicio: venc,
+      data_fim: data.data_fim ? toDate(data.data_fim) : null,
+      forma_pagamento: forma,
+      cobrar_via_asaas: true,
+      cost_center_id: data.cost_center_id || null,
+      observacoes: data.observacoes || null,
+      created_by: ctx.userId || null,
+    },
+  });
+
+  // 5. Criação da Assinatura no Asaas
+  const asaas = new AsaasClient(company);
+  const sub = await asaas.createSubscription({
+    customer: customerId,
+    billingType: forma,
+    value: valor,
+    nextDueDate: venc,
+    cycle: periodicidade,
+    description: titulo,
+    externalReference: `contract:${contract.id}`,
+    endDate: data.data_fim ? toDate(data.data_fim) : undefined,
+  });
+
+  // 6. Vincula a assinatura ao contrato
+  await prisma.bizContract.update({
+    where: { id: contract.id },
+    data: { asaas_subscription_id: sub.id },
+  });
+
+  // 7. Sincroniza pagamentos gerados pela assinatura
+  const contracts = require('./contracts');
+  await contracts.syncAsaas(ctx, contract.id);
+
+  // 8. Busca lançamentos gerados
+  const createdTransactions = await prisma.bizTransaction.findMany({
+    where: { contract_id: contract.id, company_id: ctx.companyId },
+    include: INCLUDE,
+    orderBy: { vencimento: 'asc' },
+  });
+
+  await audit(ctx, 'create', 'assinatura', sub.id, `Assinatura Asaas ${sub.id} criada para "${client.nome}" no valor de R$ ${valor} (${periodicidade})`);
+
+  return {
+    success: true,
+    subscription: sub,
+    contract,
+    transactions: createdTransactions.map(decorate),
+    primaryTransaction: createdTransactions[0] ? decorate(createdTransactions[0]) : null,
+  };
 }
 
 async function update(ctx, id, data) {
@@ -535,6 +668,7 @@ module.exports = {
   list,
   get,
   create,
+  createSubscription,
   update,
   pay,
   reopen,

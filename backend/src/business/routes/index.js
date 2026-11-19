@@ -168,6 +168,8 @@ function createBizRouter() {
   // Contas a pagar / receber
   const finWrite = requirePerm('financeiro:write');
   r.get('/transactions', ah(async (req, res) => res.json(await transactions.list(req.ctx, req.query))));
+  r.post('/transactions/subscription', finWrite, ah(async (req, res) => res.status(201).json(await transactions.createSubscription(req.ctx, req.body || {}))));
+  r.post('/subscriptions', finWrite, ah(async (req, res) => res.status(201).json(await transactions.createSubscription(req.ctx, req.body || {}))));
   r.post('/transactions/batch/pay', finWrite, ah(async (req, res) => res.json(await transactions.batchPay(req.ctx, req.body || {}))));
   r.post('/transactions/batch/cancel', finWrite, ah(async (req, res) => res.json(await transactions.batchCancel(req.ctx, req.body || {}))));
   r.post('/transactions/batch/delete', finWrite, ah(async (req, res) => res.json(await transactions.batchDelete(req.ctx, req.body || {}))));

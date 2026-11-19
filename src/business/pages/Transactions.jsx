@@ -24,6 +24,7 @@ export default function Transactions({ tipo }) {
   const [editingClient, setEditingClient] = useState(null);
   const [linkModal, setLinkModal] = useState(false);
   const [billModal, setBillModal] = useState(false);
+  const [subscriptionModal, setSubscriptionModal] = useState(false);
   const [txLinkModal, setTxLinkModal] = useState(null);
   const [generateLinkModal, setGenerateLinkModal] = useState(null);
   const [invoiceModal, setInvoiceModal] = useState(null);
@@ -82,9 +83,19 @@ export default function Transactions({ tipo }) {
         subtitle={receita ? 'Mensalidades, projetos e vendas. Emita cobranças no Asaas e acompanhe quem pagou.' : 'Fornecedores, folha, impostos e despesas fixas. Vincule ao contrato para entrar na margem dele.'}
         actions={
           write && (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {receita ? (
-                <Button variant="secondary" icon={Link2} onClick={() => setLinkModal(true)}>Link Asaas</Button>
+                <>
+                  <Button
+                    variant="secondary"
+                    icon={Repeat}
+                    onClick={() => setSubscriptionModal(true)}
+                    className="border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold"
+                  >
+                    Nova Assinatura Asaas
+                  </Button>
+                  <Button variant="secondary" icon={Link2} onClick={() => setLinkModal(true)}>Link Avulso Asaas</Button>
+                </>
               ) : (
                 <Button variant="secondary" icon={Barcode} onClick={() => setBillModal(true)}>Pagar boleto Asaas</Button>
               )}
@@ -360,6 +371,15 @@ export default function Transactions({ tipo }) {
       {editing && <TransactionForm tipo={tipo} initial={editing} onClose={() => setEditing(null)} onDelete={(id) => act.mutate({ id, action: '', method: 'DELETE' }, { onSuccess: () => setEditing(null) })} />}
       {paying && <PayModal t={paying} onClose={() => setPaying(null)} />}
       {linkModal && <PaymentLinkModal onClose={() => setLinkModal(false)} />}
+      {subscriptionModal && (
+        <CreateSubscriptionModal
+          onClose={() => setSubscriptionModal(false)}
+          onSuccess={(res) => {
+            if (res?.primaryTransaction) setTxLinkModal(res.primaryTransaction);
+            list.refetch();
+          }}
+        />
+      )}
       {billModal && <PayBillModal onClose={() => setBillModal(false)} />}
       {txLinkModal && <TransactionPaymentLinkModal t={txLinkModal} onClose={() => setTxLinkModal(null)} onRefresh={(upd) => { setTxLinkModal(upd); list.refetch(); }} />}
       {generateLinkModal && <GeneratePaymentLinkModal t={generateLinkModal} onClose={() => setGenerateLinkModal(null)} onSuccess={(upd) => { setGenerateLinkModal(null); setTxLinkModal(upd); list.refetch(); }} />}
@@ -405,6 +425,10 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
         body.repetir = Number(f.n);
         body.periodicidade = f.periodicidade || 'MENSAL';
       }
+      if (f.modo === 'ASSINATURA_ASAAS') {
+        body.modo = 'ASSINATURA_ASAAS';
+        body.periodicidade = f.periodicidade || 'MENSAL';
+      }
       if (f.pago) { body.pago = true; body.bank_account_id = f.bank_account_id || null; }
       if (f.cobrar_asaas) body.cobrar_asaas = true;
     } else body.aplicar_proximas = f.aplicar_proximas;
@@ -447,6 +471,7 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
                   <option value="UNICA">Lançamento único (avulso)</option>
                   <option value="PARCELAS">Parcelar valor total</option>
                   <option value="REPETIR">Recorrente (repetir a cada período)</option>
+                  {receita && <option value="ASSINATURA_ASAAS">Assinatura no Asaas (cobrança recorrente)</option>}
                 </Select>
               </Field>
               {f.modo === 'PARCELAS' && (
@@ -454,7 +479,7 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
                   <Input type="number" min={2} max={120} value={f.n} onChange={set('n')} />
                 </Field>
               )}
-              {f.modo === 'REPETIR' && (
+              {(f.modo === 'REPETIR' || f.modo === 'ASSINATURA_ASAAS') && (
                 <Field label="Periodicidade">
                   <Select value={f.periodicidade} onChange={set('periodicidade')}>
                     <option value="MENSAL">Mensal (todo mês)</option>
@@ -468,6 +493,14 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
                 </Field>
               )}
             </div>
+
+            {f.modo === 'ASSINATURA_ASAAS' && (
+              <div className="pt-2 border-t border-[var(--line)]">
+                <p className="text-xs text-indigo-700 dark:text-indigo-300 font-semibold flex items-center gap-1.5">
+                  <Repeat className="w-4 h-4 text-indigo-600" /> Cria uma assinatura recorrente no Asaas. O cliente será cobrado automaticamente a cada ciclo ({f.periodicidade.toLowerCase()}) e o primeiro lançamento já terá o link de pagamento gerado.
+                </p>
+              </div>
+            )}
 
             {f.modo === 'REPETIR' && (
               <div className="grid sm:grid-cols-2 gap-3 items-center pt-2 border-t border-[var(--line)]">
@@ -837,6 +870,217 @@ function GeneratePaymentLinkModal({ t, onClose, onSuccess }) {
             <option value="CARTAO">Somente Cartão de Crédito</option>
           </Select>
         </Field>
+      </form>
+    </Modal>
+  );
+}
+
+function CreateSubscriptionModal({ onClose, onSuccess }) {
+  const L = useLookups();
+  const [f, setF] = useState({
+    client_id: '',
+    descricao: '',
+    valor: '',
+    vencimento: todayYmd(),
+    periodicidade: 'MENSAL',
+    forma_pagamento: 'UNDEFINED',
+    data_fim: '',
+    cost_center_id: '',
+    doc: '',
+    email: '',
+    phone: '',
+    nomeNovo: '',
+  });
+
+  const [isNovoCliente, setIsNovoCliente] = useState(false);
+
+  const selectedClient = useMemo(() => L.clients.find((c) => c.id === f.client_id), [L.clients, f.client_id]);
+
+  React.useEffect(() => {
+    if (selectedClient) {
+      setF((prev) => ({
+        ...prev,
+        doc: selectedClient.documento || '',
+        email: selectedClient.email || '',
+        phone: selectedClient.telefone || '',
+      }));
+    }
+  }, [selectedClient]);
+
+  const createSub = useBizMutation((body) => biz('/transactions/subscription', { method: 'POST', body }), {
+    success: 'Assinatura criada no Asaas com sucesso!',
+    onSuccess: (res) => {
+      onSuccess?.(res);
+      onClose();
+    },
+  });
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (!isNovoCliente && !f.client_id) {
+      toast.error('Selecione um cliente para a assinatura');
+      return;
+    }
+    if (isNovoCliente && !f.nomeNovo) {
+      toast.error('Informe o nome do novo cliente');
+      return;
+    }
+    const cleanDoc = String(f.doc || '').replace(/\D/g, '');
+    if (!cleanDoc || cleanDoc.length < 11) {
+      toast.error('O Asaas exige CPF ou CNPJ do cliente para criar assinaturas');
+      return;
+    }
+    if (!f.valor || Number(f.valor) <= 0) {
+      toast.error('Informe o valor por ciclo da assinatura');
+      return;
+    }
+
+    const body = {
+      descricao: f.descricao,
+      valor: Number(f.valor),
+      vencimento: f.vencimento,
+      periodicidade: f.periodicidade,
+      forma_pagamento: f.forma_pagamento,
+      data_fim: f.data_fim || undefined,
+      cost_center_id: f.cost_center_id || undefined,
+    };
+
+    if (isNovoCliente) {
+      body.client_data = {
+        nome: f.nomeNovo,
+        documento: cleanDoc,
+        email: f.email || undefined,
+        telefone: f.phone || undefined,
+      };
+    } else {
+      body.client_id = f.client_id;
+      body.client_data = {
+        documento: cleanDoc,
+        email: f.email || undefined,
+        telefone: f.phone || undefined,
+      };
+    }
+
+    createSub.mutate(body);
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width={680}
+      title="Nova Assinatura no Asaas"
+      description="Cria uma cobrança recorrente automática no Asaas. As faturas são geradas periodicamente e baixadas via webhook."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button
+            type="submit"
+            form="subform"
+            variant="success"
+            icon={Repeat}
+            loading={createSub.isPending}
+          >
+            Criar Assinatura no Asaas
+          </Button>
+        </>
+      }
+    >
+      <form id="subform" onSubmit={submit} className="space-y-4">
+        <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/50 rounded-xl flex items-start gap-2.5 text-xs text-indigo-900 dark:text-indigo-200">
+          <Repeat className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block">Assinatura Integrada Asaas</span>
+            Esta assinatura cobrará o cliente automaticamente conforme o ciclo escolhido. A primeira fatura será gerada imediatamente com link de pagamento seguro (PIX, Boleto e Cartão).
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-bold text-[var(--ink)]">Cliente da Assinatura</span>
+          <button
+            type="button"
+            onClick={() => { setIsNovoCliente(!isNovoCliente); setF((prev) => ({ ...prev, client_id: '', nomeNovo: '', doc: '', email: '', phone: '' })); }}
+            className="text-xs text-[var(--result)] font-semibold hover:underline"
+          >
+            {isNovoCliente ? 'Selecionar cliente cadastrado' : '+ Cadastrar novo cliente'}
+          </button>
+        </div>
+
+        {isNovoCliente ? (
+          <div className="grid sm:grid-cols-2 gap-3 p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)]">
+            <Field label="Nome do cliente / Razão Social" className="sm:col-span-2">
+              <Input required value={f.nomeNovo} onChange={(e) => setF({ ...f, nomeNovo: e.target.value })} placeholder="Ex.: Tech Solutions Ltda" />
+            </Field>
+            <Field label="CPF / CNPJ (obrigatório)">
+              <Input required value={f.doc} onChange={(e) => setF({ ...f, doc: e.target.value })} placeholder="000.000.000-00 ou 00.000.000/0000-00" />
+            </Field>
+            <Field label="WhatsApp / Telefone">
+              <Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="(11) 99999-9999" />
+            </Field>
+            <Field label="E-mail" className="sm:col-span-2">
+              <Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="financeiro@cliente.com" />
+            </Field>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Field label="Cliente cadastrado">
+              <Select required value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })}>
+                <option value="">Selecione o cliente…</option>
+                {L.clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_fantasia || c.nome} {c.documento ? `(${c.documento})` : '— sem CPF/CNPJ'}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {f.client_id && (
+              <div className="grid sm:grid-cols-2 gap-3 p-3 bg-[var(--surface-2)] rounded-xl border border-[var(--line)]">
+                <Field label="CPF / CNPJ do cliente" className="sm:col-span-2">
+                  <Input required value={f.doc} onChange={(e) => setF({ ...f, doc: e.target.value })} placeholder="000.000.000-00 ou 00.000.000/0000-00" />
+                </Field>
+                <Field label="E-mail">
+                  <Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="financeiro@cliente.com" />
+                </Field>
+                <Field label="WhatsApp / Telefone">
+                  <Input value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="(11) 99999-9999" />
+                </Field>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Descrição da assinatura" className="sm:col-span-2">
+            <Input required value={f.descricao} onChange={(e) => setF({ ...f, descricao: e.target.value })} placeholder="Ex.: Mensalidade Plano Pro, Manutenção Mensal..." />
+          </Field>
+          <Field label="Valor por ciclo">
+            <MoneyInput required value={f.valor} onChange={(v) => setF({ ...f, valor: v })} placeholder="0,00" />
+          </Field>
+          <Field label="Periodicidade">
+            <Select value={f.periodicidade} onChange={(e) => setF({ ...f, periodicidade: e.target.value })}>
+              <option value="MENSAL">Mensal (todo mês)</option>
+              <option value="BIMESTRAL">Bimestral (a cada 2 meses)</option>
+              <option value="TRIMESTRAL">Trimestral (a cada 3 meses)</option>
+              <option value="SEMESTRAL">Semestral (a cada 6 meses)</option>
+              <option value="ANUAL">Anual (a cada 1 ano)</option>
+            </Select>
+          </Field>
+          <Field label="1º Vencimento">
+            <Input type="date" required value={f.vencimento} onChange={(e) => setF({ ...f, vencimento: e.target.value })} />
+          </Field>
+          <Field label="Término da assinatura (opcional)">
+            <Input type="date" value={f.data_fim} onChange={(e) => setF({ ...f, data_fim: e.target.value })} placeholder="Sem data fim" />
+          </Field>
+          <Field label="Forma de pagamento aceita no Asaas" className="sm:col-span-2">
+            <Select value={f.forma_pagamento} onChange={(e) => setF({ ...f, forma_pagamento: e.target.value })}>
+              <option value="UNDEFINED">Todas (Cliente escolhe PIX, Boleto ou Cartão no Asaas)</option>
+              <option value="BOLETO">Somente Boleto Bancário</option>
+              <option value="PIX">Somente PIX</option>
+              <option value="CARTAO">Somente Cartão de Crédito</option>
+            </Select>
+          </Field>
+        </div>
       </form>
     </Modal>
   );
