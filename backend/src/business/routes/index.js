@@ -37,7 +37,6 @@ async function ensureDbColumns() {
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "ia_habilitada" BOOLEAN NOT NULL DEFAULT true;
 
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;

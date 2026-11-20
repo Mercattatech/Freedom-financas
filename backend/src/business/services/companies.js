@@ -63,7 +63,6 @@ const EDITABLE = [
   'proposta_rodape',
   'municipal_service_code', 'municipal_service_name', 'nfse_descricao_padrao',
   'nfse_emitir_ao_receber', 'nfse_reter_iss', 'nfse_aliquota_iss',
-  'ia_habilitada',
 ];
 
 async function update(ctx, data) {

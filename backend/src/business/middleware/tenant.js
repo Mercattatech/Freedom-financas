@@ -21,15 +21,9 @@ async function contextFromApiKey(raw) {
   ]);
   if (!member || !member.ativo) throw new HttpError(401, 'O usuário dono desta chave não tem mais acesso à empresa');
 
-  // Verifica se o módulo de IA está ativo na empresa (para monetização de controle por IA)
-  try {
-    const rawCheck = await prisma.$queryRawUnsafe(`SELECT "ia_habilitada" FROM "biz_company" WHERE "id" = $1 LIMIT 1`, key.company_id);
-    if (rawCheck && rawCheck[0] && rawCheck[0].ia_habilitada === false) {
-      throw new HttpError(403, 'O controle por Inteligência Artificial (Claude & ChatGPT) está desativado para esta empresa. Ative o módulo de IA no plano da empresa.');
-    }
-  } catch (err) {
-    if (err instanceof HttpError) throw err;
-    // Se coluna ainda não existir em ambiente de teste, segue normalmente
+  // Se a empresa estiver inativa, bloqueia
+  if (company && company.ativo === false) {
+    throw new HttpError(403, 'Esta empresa está desativada');
   }
 
   prisma.bizApiKey.update({ where: { id: key.id }, data: { ultimo_uso: new Date() } }).catch(() => {});

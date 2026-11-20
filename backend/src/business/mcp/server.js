@@ -42,13 +42,22 @@ function buildServer(ctx, empresaNome) {
 
 async function mcpHandler(req, res) {
   try {
-    if (req.method !== 'POST') {
-      return res.status(405).set('Allow', 'POST').json({ jsonrpc: '2.0', error: { code: -32000, message: 'Use POST (servidor MCP sem estado)' }, id: null });
+    if (req.method === 'OPTIONS') {
+      return res.status(204).end();
     }
-    const token = (req.headers.authorization || '').split(' ')[1] || req.headers['x-api-key'];
+    const token = (req.headers.authorization || '').split(' ')[1]
+      || req.headers['x-api-key']
+      || req.query.token
+      || req.query.apiKey
+      || req.query.key;
+
     if (!token || !String(token).startsWith(API_KEY_PREFIX)) {
       res.set('WWW-Authenticate', 'Bearer realm="freedom-empresas"');
-      return res.status(401).json({ jsonrpc: '2.0', error: { code: -32001, message: 'Envie a chave de API do Freedom Empresas no cabeçalho Authorization: Bearer fbk_...' }, id: null });
+      return res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Envie a chave de API do Freedom Empresas no cabeçalho Authorization: Bearer fbk_... ou parâmetro ?token=fbk_...' },
+        id: null,
+      });
     }
     const ctx = await contextFromApiKey(String(token));
     const company = await prisma.bizCompany.findUnique({ where: { id: ctx.companyId }, select: { razao_social: true, nome_fantasia: true } });
