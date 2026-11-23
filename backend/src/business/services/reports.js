@@ -885,7 +885,7 @@ async function clientsRanking(ctx, { limit = 15 } = {}) {
   const [clients, contracts, txs] = await Promise.all([
     prisma.bizClient.findMany({
       where: { company_id: ctx.companyId },
-      select: { id: true, nome: true, nome_fantasia: true, created_date: true, ativo: true },
+      select: { id: true, nome: true, nome_fantasia: true, created_date: true, status: true },
     }),
     prisma.bizContract.findMany({
       where: { company_id: ctx.companyId },
@@ -902,7 +902,7 @@ async function clientsRanking(ctx, { limit = 15 } = {}) {
     byClient.set(c.id, {
       client_id: c.id,
       nome: c.nome_fantasia || c.nome,
-      ativo: c.ativo,
+      status: c.status,
       ltv: 0,
       mrr: 0,
       pagos: 0,
