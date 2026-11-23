@@ -6,6 +6,8 @@ const MATRIX = {
   COMERCIAL: ['comercial:write', 'clientes:write'],
   OPERACIONAL: ['operacional:write'],
   LEITURA: ['relatorios:read'],
+  // Colaborador: só lança e edita contas a pagar e a receber (sem relatórios, configurações ou MCP)
+  COLABORADOR: ['financeiro:write'],
 };
 
 const can = (papel, perm) => {

@@ -10,9 +10,11 @@ import AdminAccounts from '../components/admin/AdminAccounts';
 import AdminPayments from '../components/admin/AdminPayments';
 import AdminFamilies from '../components/admin/AdminFamilies';
 import WhatsAppConfig from '../components/admin/WhatsAppConfig';
+import AdminClients from '../components/admin/AdminClients';
 import { toast } from 'sonner';
 
 const TABS = [
+  { id: 'clientes', label: '🧑‍💼 Cadastro de Clientes' },
   { id: 'payments', label: '💳 Pagamentos' },
   { id: 'users', label: '👥 Acessos Manuais' },
   { id: 'accounts', label: '📈 Contas & Engajamento' },
@@ -550,7 +552,7 @@ function AdminSubscribersEmbed() {
 }
 
 export default function Admin() {
-  const [tab, setTab] = useState('subscribers');
+  const [tab, setTab] = useState('clientes');
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -628,6 +630,7 @@ export default function Admin() {
 
         {/* Main content */}
         <main className="ml-64 flex-1 min-h-screen bg-slate-950 p-8">
+          {tab === 'clientes' && <AdminClients />}
           {tab === 'subscribers' && <AdminSubscribersEmbed />}
           {tab === 'payments' && <AdminPayments />}
           {tab === 'users' && <AdminUsers />}

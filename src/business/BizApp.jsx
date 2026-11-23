@@ -16,10 +16,22 @@ import Settings from './pages/Settings';
 import { Loading, ErrorBox } from './components/ui';
 
 function Shell() {
-  const { companies, loading, error, can } = useBiz();
+  const { companies, loading, error, can, papel } = useBiz();
   if (loading) return <div className="biz min-h-screen"><Loading label="Carregando empresas…" /></div>;
   if (error) return <div className="biz min-h-screen p-8"><ErrorBox error={error} /></div>;
   if (!companies.length) return <Onboarding first />;
+  if (papel === 'COLABORADOR') {
+    // Colaborador: somente contas a pagar e a receber
+    return (
+      <BizLayout>
+        <Routes>
+          <Route path="receber" element={<Transactions tipo="RECEITA" key="r" />} />
+          <Route path="pagar" element={<Transactions tipo="DESPESA" key="p" />} />
+          <Route path="*" element={<Navigate to="/empresas/pagar" replace />} />
+        </Routes>
+      </BizLayout>
+    );
+  }
   return (
     <Routes>
       <Route path="nova" element={<Onboarding />} />

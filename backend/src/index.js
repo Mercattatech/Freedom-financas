@@ -38,6 +38,7 @@ app.use('/api/subcategories', require('./routes/subcategories'));
 app.use('/api/functions', require('./routes/functions'));
 app.use('/api/upload', require('./routes/upload'));
 app.use('/api/stripe', require('./routes/stripe'));
+app.use('/api/admin/clientes', require('./routes/adminClients'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/webhooks/whatsapp', require('./routes/whatsapp'));
 app.use('/api/reports', require('./routes/reports'));

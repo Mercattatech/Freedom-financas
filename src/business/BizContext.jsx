@@ -9,6 +9,7 @@ const MATRIX = {
   COMERCIAL: ['comercial:write', 'clientes:write'],
   OPERACIONAL: ['operacional:write'],
   LEITURA: ['relatorios:read'],
+  COLABORADOR: ['financeiro:write'],
 };
 
 const Ctx = createContext(null);

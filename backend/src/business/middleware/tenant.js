@@ -20,6 +20,7 @@ async function contextFromApiKey(raw) {
     }),
   ]);
   if (!member || !member.ativo) throw new HttpError(401, 'O usuário dono desta chave não tem mais acesso à empresa');
+  if (member.papel === 'COLABORADOR') throw new HttpError(403, 'Colaboradores não têm acesso ao MCP/integrações. Peça a um administrador.');
 
   // Se a empresa estiver inativa, bloqueia
   if (company && company.ativo === false) {

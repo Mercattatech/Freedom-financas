@@ -732,7 +732,7 @@ function AccountsTab() {
   );
 }
 
-const PAPEIS = [['OWNER', 'Proprietário'], ['ADMIN', 'Administrador'], ['FINANCEIRO', 'Financeiro'], ['COMERCIAL', 'Comercial'], ['OPERACIONAL', 'Operacional'], ['LEITURA', 'Somente leitura']];
+const PAPEIS = [['OWNER', 'Proprietário'], ['ADMIN', 'Administrador (acesso total + MCP)'], ['COLABORADOR', 'Colaborador (só contas a pagar/receber)'], ['FINANCEIRO', 'Financeiro'], ['COMERCIAL', 'Comercial'], ['OPERACIONAL', 'Operacional'], ['LEITURA', 'Somente leitura']];
 function UsersTab() {
   const q = useBizQuery('/members');
   const [f, setF] = useState({ email: '', papel: 'FINANCEIRO' });

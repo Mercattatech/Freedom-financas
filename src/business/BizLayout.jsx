@@ -28,7 +28,7 @@ function CompanySwitcher() {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] font-bold text-white truncate">{company?.nome_fantasia || company?.razao_social}</span>
-          <span className="block text-xs text-[var(--side-ink)] truncate">{({ OWNER: 'Proprietário', ADMIN: 'Administrador', FINANCEIRO: 'Financeiro', COMERCIAL: 'Comercial', OPERACIONAL: 'Operacional', LEITURA: 'Somente leitura' })[company?.papel]}</span>
+          <span className="block text-xs text-[var(--side-ink)] truncate">{({ OWNER: 'Proprietário', ADMIN: 'Administrador', FINANCEIRO: 'Financeiro', COMERCIAL: 'Comercial', OPERACIONAL: 'Operacional', LEITURA: 'Somente leitura', COLABORADOR: 'Colaborador' })[company?.papel]}</span>
         </span>
         <ChevronsUpDown className="w-4 h-4 text-[var(--side-ink)]" />
       </button>
@@ -39,7 +39,7 @@ function CompanySwitcher() {
               {c.nome_fantasia || c.razao_social}
             </button>
           ))}
-          <Link to="/empresas/nova" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--result)] font-semibold hover:bg-[var(--paper)] border-t border-[var(--line)]"><Plus className="w-4 h-4" />Nova empresa</Link>
+          {company?.papel !== 'COLABORADOR' && <Link to="/empresas/nova" onClick={() => setOpen(false)} className="flex items-center gap-2 px-3 py-2 text-sm text-[var(--result)] font-semibold hover:bg-[var(--paper)] border-t border-[var(--line)]"><Plus className="w-4 h-4" />Nova empresa</Link>}
         </div>
       )}
     </div>
@@ -47,10 +47,11 @@ function CompanySwitcher() {
 }
 
 function SideNav({ onNavigate }) {
-  const { can } = useBiz();
+  const { can, papel } = useBiz();
+  const nav = papel === 'COLABORADOR' ? NAV.filter(([g]) => g === 'Financeiro') : NAV;
   return (
     <nav className="flex-1 overflow-y-auto px-3 py-2" aria-label="Módulo Empresas">
-      {NAV.map(([group, items]) => {
+      {nav.map(([group, items]) => {
         const visible = items.filter(([, , , perm]) => !perm || can(perm));
         if (!visible.length) return null;
         return (
