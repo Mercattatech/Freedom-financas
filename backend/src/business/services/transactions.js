@@ -90,7 +90,8 @@ async function get(ctx, id) {
 }
 
 const FIELDS = ['descricao', 'valor', 'vencimento', 'competencia', 'forma_pagamento', 'documento', 'client_id', 'supplier_id',
-  'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'observacoes', 'anexo_url', 'juros_multa', 'desconto'];
+  'contract_id', 'account_id', 'cost_center_id', 'bank_account_id', 'observacoes', 'anexo_url', 'juros_multa', 'desconto',
+  'data_pagamento', 'valor_pago'];
 
 async function assertRefs(ctx, d) {
   const checks = [
@@ -337,7 +338,9 @@ async function update(ctx, id, data) {
   for (const f of FIELDS) if (data[f] !== undefined) patch[f] = data[f] === '' ? null : data[f];
   if (patch.vencimento) patch.vencimento = toDate(patch.vencimento);
   if (patch.competencia) patch.competencia = startOfMonth(patch.competencia);
+  if (patch.data_pagamento) patch.data_pagamento = toDate(patch.data_pagamento);
   if (patch.valor !== undefined) patch.valor = round2(patch.valor);
+  if (patch.valor_pago !== undefined) patch.valor_pago = round2(patch.valor_pago);
 
   // Mantém a cobrança do Asaas em sincronia enquanto estiver em aberto
   if (t.asaas_payment_id && t.status === 'PENDENTE' && (patch.valor !== undefined || patch.vencimento)) {
@@ -348,7 +351,7 @@ async function update(ctx, id, data) {
   // Aplicar alteração às próximas parcelas do mesmo grupo
   if (data.aplicar_proximas && t.grupo_parcelas) {
     const prox = {};
-    for (const f of ['account_id', 'cost_center_id', 'client_id', 'supplier_id', 'contract_id', 'forma_pagamento']) if (patch[f] !== undefined) prox[f] = patch[f];
+    for (const f of ['descricao', 'account_id', 'cost_center_id', 'client_id', 'supplier_id', 'contract_id', 'forma_pagamento', 'bank_account_id']) if (patch[f] !== undefined) prox[f] = patch[f];
     if (patch.valor !== undefined && t.recorrente) prox.valor = patch.valor;
     if (Object.keys(prox).length) {
       await prisma.bizTransaction.updateMany({
