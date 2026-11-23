@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature, Wallet, RefreshCw, Settings } from 'lucide-react';
 import { useBizQuery } from '../BizContext';
 import { PageHeader, Panel, MonthPicker, Kpi, Loading, ErrorBox, MarginRuler, Money, cx } from '../components/ui';
 import { TrendChart, Waterfall } from '../components/Charts';
@@ -11,6 +11,7 @@ export default function Dashboard() {
   const [mes, setMes] = useState(currentYm());
   const dash = useBizQuery('/reports/dashboard', { ref: mes });
   const ag = useBizQuery('/reports/agency-margin', { from: mes });
+  const asaasBal = useBizQuery('/company/asaas/balance', {}, { staleTime: 30_000 });
   if (dash.isLoading || ag.isLoading) return <Loading />;
   if (dash.error) return <ErrorBox error={dash.error} />;
   const d = dash.data;
@@ -19,15 +20,69 @@ export default function Dashboard() {
   const s = d.assinaturas;
   const cx2 = d.caixa;
   const asaas = d.asaas || {};
-  const temAsaas = asaas.conectado || d.situacao_cobrancas?.asaas_conectado;
-  const saldoAsaas = cx2.saldo_asaas ?? d.situacao_cobrancas?.asaas_saldo;
+  const balData = asaasBal.data || {};
+  const temAsaas = balData.conectado || asaas.conectado || d.situacao_cobrancas?.asaas_conectado;
+  const asaasConfigurado = balData.configurado ?? temAsaas;
+  const asaasAmbiente = balData.ambiente || asaas.ambiente;
+  const saldoAsaas = balData.saldo ?? cx2.saldo_asaas ?? d.situacao_cobrancas?.asaas_saldo;
 
   return (
     <>
       <PageHeader title="Visão geral" subtitle={`Resultado por competência de ${monthLong(mes).toLowerCase()}. Caixa e vencimentos são de hoje.`} actions={<MonthPicker value={mes} onChange={setMes} />} />
 
+      {/* Saldo atual da conta Asaas em destaque */}
+      <section className="mb-5 rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 dark:from-emerald-950/40 dark:via-[var(--surface)] dark:to-teal-950/30 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
+            <Wallet className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Saldo atual da conta Asaas</span>
+              {temAsaas && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  {asaasAmbiente === 'PRODUCAO' ? 'Produção' : 'Sandbox'}
+                </span>
+              )}
+            </div>
+            {asaasBal.isLoading && saldoAsaas == null ? (
+              <p className="text-sm text-[var(--muted)] mt-0.5">Consultando saldo no Asaas…</p>
+            ) : temAsaas ? (
+              <p className="num text-2xl sm:text-3xl font-extrabold text-emerald-700 dark:text-emerald-300 leading-tight mt-0.5">
+                {saldoAsaas != null ? money(saldoAsaas) : 'R$ 0,00'}
+              </p>
+            ) : asaasConfigurado && balData.erro ? (
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-0.5">Falha ao consultar Asaas: {balData.erro}</p>
+            ) : (
+              <p className="text-sm text-[var(--muted)] mt-0.5">Conta Asaas ainda não conectada nesta empresa.</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {asaasConfigurado && (
+            <button
+              type="button"
+              onClick={() => { asaasBal.refetch(); dash.refetch(); }}
+              disabled={asaasBal.isFetching}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-emerald-300 dark:border-emerald-800 bg-white dark:bg-[var(--surface)] text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 transition disabled:opacity-50"
+            >
+              <RefreshCw className={cx('w-3.5 h-3.5', asaasBal.isFetching && 'animate-spin')} />
+              Atualizar saldo
+            </button>
+          )}
+          <Link
+            to="/empresas/configuracoes?aba=asaas"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-[var(--line)] bg-white dark:bg-[var(--surface)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:border-emerald-400 transition"
+          >
+            <Settings className="w-3.5 h-3.5" />
+            {temAsaas ? 'Configurar Asaas' : 'Conectar Asaas'}
+          </Link>
+        </div>
+      </section>
+
       {/* Situação das cobranças (Visão Asaas) */}
-      <SituacaoCobrancas initialData={d.situacao_cobrancas} mes={mes} onRefresh={() => dash.refetch()} />
+      <SituacaoCobrancas initialData={d.situacao_cobrancas} mes={mes} onRefresh={() => { asaasBal.refetch(); dash.refetch(); }} />
 
       <div className="grid xl:grid-cols-[1fr_340px] gap-5 mb-5">
         <Panel title="Do faturamento ao lucro" action={<Link to="/empresas/relatorios" className="text-sm font-semibold text-[var(--result)]">Ver DRE completa</Link>}>

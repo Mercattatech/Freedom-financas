@@ -123,7 +123,9 @@ function AsaasTab() {
     },
   });
   if (st.isLoading) return <Loading />;
-  const s = st.data;
+  if (st.error) return <div className="p-4 rounded-xl border border-red-300 bg-red-50 text-red-700 text-sm">Erro ao carregar status do Asaas: {st.error.message}</div>;
+  const s = st.data || {};
+  const webhook = s.webhook || { url: '', token: '', eventos: [] };
   const copy = (v) => { navigator.clipboard.writeText(v); toast.success('Copiado'); };
   return (
     <div className="space-y-5">
@@ -145,10 +147,10 @@ function AsaasTab() {
         <Panel title="Webhook (retorno de pagamentos)">
           <p className="text-sm text-[var(--ink-2)] mb-4">No Asaas, vá em Integrações › Webhooks, crie um webhook de cobranças com a URL e o token abaixo e marque os eventos listados. Assim os pagamentos dão baixa sozinhos aqui.</p>
           <div className="space-y-3">
-            {[['URL', s.webhook.url], ['Token de autenticação', s.webhook.token]].map(([l, v]) => (
+            {[['URL', webhook.url], ['Token de autenticação', webhook.token]].map(([l, v]) => (
               <Field key={l} label={l}><div className="flex gap-2"><Input readOnly value={v} className="num text-xs" /><Button variant="secondary" icon={Copy} onClick={() => copy(v)} aria-label={`Copiar ${l}`} /></div></Field>
             ))}
-            <Field label="Eventos"><p className="text-xs text-[var(--muted)] leading-relaxed">{s.webhook.eventos.join(', ')}</p></Field>
+            <Field label="Eventos"><p className="text-xs text-[var(--muted)] leading-relaxed">{webhook.eventos.join(', ')}</p></Field>
           </div>
         </Panel>
       </div>
@@ -210,8 +212,6 @@ function AsaasTab() {
           </div>
         )}
       </Panel>
-
-      <NfseConfigPanel />
     </div>
   );
 }
