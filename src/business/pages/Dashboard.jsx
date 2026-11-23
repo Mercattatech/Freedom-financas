@@ -18,13 +18,16 @@ export default function Dashboard() {
   const r = d.resultado_mes;
   const s = d.assinaturas;
   const cx2 = d.caixa;
+  const asaas = d.asaas || {};
+  const temAsaas = asaas.conectado || d.situacao_cobrancas?.asaas_conectado;
+  const saldoAsaas = cx2.saldo_asaas ?? d.situacao_cobrancas?.asaas_saldo;
 
   return (
     <>
       <PageHeader title="Visão geral" subtitle={`Resultado por competência de ${monthLong(mes).toLowerCase()}. Caixa e vencimentos são de hoje.`} actions={<MonthPicker value={mes} onChange={setMes} />} />
 
       {/* Situação das cobranças (Visão Asaas) */}
-      <SituacaoCobrancas initialData={d.situacao_cobrancas} mes={mes} />
+      <SituacaoCobrancas initialData={d.situacao_cobrancas} mes={mes} onRefresh={() => dash.refetch()} />
 
       <div className="grid xl:grid-cols-[1fr_340px] gap-5 mb-5">
         <Panel title="Do faturamento ao lucro" action={<Link to="/empresas/relatorios" className="text-sm font-semibold text-[var(--result)]">Ver DRE completa</Link>}>
@@ -48,11 +51,23 @@ export default function Dashboard() {
         </section>
       </div>
 
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 divide-x divide-y xl:divide-y-0 divide-[var(--line-2)] mb-5">
+      <div className={cx(
+        "rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-3 divide-x divide-y xl:divide-y-0 divide-[var(--line-2)] mb-5",
+        temAsaas ? "xl:grid-cols-7" : "xl:grid-cols-6"
+      )}>
         {[
           <Kpi key="mrr" label="Receita recorrente (MRR)" value={money(s.mrr)} detail={`ARR ${money(s.arr)} · ${s.contratos_ativos} contratos`} />,
           <Kpi key="nm" label="Novo MRR no mês" value={money(s.crescimento_liquido_mrr)} tone={s.crescimento_liquido_mrr < 0 ? 'bad' : 'in'} detail={`+${money(s.novo_mrr)} novos, −${money(s.churn_mrr)} churn (${pct(s.churn_percent)})`} />,
           <Kpi key="cx" label="Caixa hoje" value={money(cx2.saldo_atual)} tone={cx2.saldo_atual < 0 ? 'bad' : undefined} detail={`${cx2.contas.length} contas financeiras`} />,
+          ...(temAsaas ? [
+            <Kpi
+              key="asaas"
+              label="Saldo Asaas"
+              value={saldoAsaas != null ? money(saldoAsaas) : 'R$ 0,00'}
+              tone="in"
+              detail={asaas.ambiente === 'PRODUCAO' ? 'Disponível em conta (Prod)' : 'Disponível em conta (Sandbox)'}
+            />
+          ] : []),
           <Kpi key="rec" label="A receber em 30 dias" value={money(cx2.a_receber_30d)} tone="in" />,
           <Kpi key="pag" label="A pagar em 30 dias" value={money(cx2.a_pagar_30d)} tone="out" />,
           <Kpi key="inad" label="Em atraso a receber" value={money(cx2.vencido_receber)} tone={cx2.vencido_receber > 0 ? 'bad' : undefined} detail={`Inadimplência ${pct(cx2.inadimplencia_percent)} dos últimos 90 dias`} />,

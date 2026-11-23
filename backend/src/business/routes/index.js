@@ -134,6 +134,20 @@ function createBizRouter() {
     }
     res.json({ ...c, conexao });
   }));
+  r.get('/company/asaas/balance', ah(async (req, res) => {
+    const full = await prisma.bizCompany.findUnique({
+      where: { id: req.ctx.companyId },
+      select: { asaas_api_key: true, asaas_ambiente: true },
+    });
+    if (!full?.asaas_api_key) return res.json({ configurado: false, conectado: false, saldo: null });
+    try {
+      const bal = await new AsaasClient(full).getBalance();
+      const saldo = typeof bal?.balance === 'number' ? bal.balance : (bal?.totalBalance != null ? Number(bal.totalBalance) : (bal?.balance != null ? Number(bal.balance) : null));
+      res.json({ configurado: true, conectado: true, ambiente: full.asaas_ambiente, saldo, raw: bal });
+    } catch (e) {
+      res.json({ configurado: true, conectado: false, erro: e.message, ambiente: full.asaas_ambiente, saldo: null });
+    }
+  }));
   r.get('/company/asaas/status', requirePerm('config:write'), ah(async (req, res) => {
     const full = await prisma.bizCompany.findUnique({ where: { id: req.ctx.companyId } });
     const webhook = await companies.getWebhookInfo(req.ctx, baseUrl(req));
@@ -145,7 +159,12 @@ function createBizRouter() {
       res.json({ configurado: true, conectado: false, erro: e.message, ambiente: full.asaas_ambiente, webhook });
     }
   }));
-  r.post('/company/asaas/sync', requirePerm('config:write'), ah(async (req, res) => {
+  r.post('/company/asaas/sync', (req, res, next) => {
+    if (!can(req.ctx?.papel, 'config:write') && !can(req.ctx?.papel, 'financeiro:write')) {
+      return res.status(403).json({ error: 'Permissão insuficiente para sincronizar com Asaas' });
+    }
+    next();
+  }, ah(async (req, res) => {
     res.json(await asaasImport.syncAllFromAsaas(req.ctx, req.body || {}));
   }));
   r.get('/payment-links', ah(async (req, res) => res.json(await asaasImport.listPaymentLinks(req.ctx, req.query))));

@@ -607,12 +607,15 @@ async function dashboard(ctx, { ref } = {}) {
     select: { id: true, numero: true, titulo: true, data_reajuste: true },
   });
 
+  const situacao = await situacaoCobrancas(ctx, { ref });
+
   return {
     referencia: ym(mes),
     assinaturas: subs,
     resultado_mes: dreMes.indicadores,
     caixa: {
       saldo_atual: saldos.total,
+      saldo_asaas: situacao.asaas_saldo,
       contas: saldos.contas,
       recebido_mes: sum(pagosMes.filter((p) => p.tipo === 'RECEITA'), (p) => num(p.valor_pago) - num(p.taxa)),
       pago_mes: sum(pagosMes.filter((p) => p.tipo === 'DESPESA'), (p) => p.valor_pago),
@@ -621,6 +624,11 @@ async function dashboard(ctx, { ref } = {}) {
       vencido_receber: vencReceber,
       vencido_pagar: vencPagar,
       inadimplencia_percent: pct(vencReceber, num(faturado90._sum.valor)),
+    },
+    asaas: {
+      conectado: situacao.asaas_conectado,
+      ambiente: situacao.asaas_ambiente,
+      saldo: situacao.asaas_saldo,
     },
     margens: {
       margem_contribuicao_contratos: cm.totais.margem_contribuicao,
@@ -642,7 +650,7 @@ async function dashboard(ctx, { ref } = {}) {
       reajustes_proximos: reajustes,
       vencido_receber: vencReceber,
     },
-    situacao_cobrancas: await situacaoCobrancas(ctx, { ref }),
+    situacao_cobrancas: situacao,
   };
 }
 
@@ -715,6 +723,17 @@ async function situacaoCobrancas(ctx, { ref, periodo = 'mes', forma_pagamento } 
       },
     }),
   ]);
+
+  let asaasSaldo = null;
+  if (company?.asaas_api_key) {
+    try {
+      const { AsaasClient } = require('./asaas');
+      const bal = await new AsaasClient(company).getBalance();
+      asaasSaldo = typeof bal?.balance === 'number' ? bal.balance : (bal?.totalBalance != null ? Number(bal.totalBalance) : (bal?.balance != null ? Number(bal.balance) : null));
+    } catch (e) {
+      console.warn('[biz] Falha ao consultar saldo Asaas em situacaoCobrancas:', e.message);
+    }
+  }
 
   const buckets = {
     recebidas: { valor: 0, liquido: 0, clientes: new Set(), cobrancas: 0 },
@@ -837,6 +856,8 @@ async function situacaoCobrancas(ctx, { ref, periodo = 'mes', forma_pagamento } 
     referencia: ym(mes),
     periodo,
     asaas_conectado: !!company?.asaas_api_key,
+    asaas_ambiente: company?.asaas_ambiente || null,
+    asaas_saldo: asaasSaldo,
     stats_origem: statsFromAsaas ? 'ASAAS_LIVE' : 'BANCO_DADOS',
     recebidas: formatB(buckets.recebidas),
     confirmadas: formatB(buckets.confirmadas),

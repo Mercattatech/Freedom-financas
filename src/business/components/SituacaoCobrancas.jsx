@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Info, Users, FileText, ChevronRight, Calendar, SlidersHorizontal, RefreshCw, BarChart2, CheckCircle2 } from 'lucide-react';
+import { Info, Users, FileText, ChevronRight, Calendar, SlidersHorizontal, RefreshCw, BarChart2, CheckCircle2, Wallet } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { toast } from 'sonner';
 import { biz } from '../api';
@@ -51,7 +51,7 @@ const STATUS_CONFIG = {
   },
 };
 
-export default function SituacaoCobrancas({ initialData, mes }) {
+export default function SituacaoCobrancas({ initialData, mes, onRefresh }) {
   const [versaoGrafico, setVersaoGrafico] = useState(false);
   const [periodo, setPeriodo] = useState('mes');
   const [forma, setForma] = useState('');
@@ -78,6 +78,7 @@ export default function SituacaoCobrancas({ initialData, mes }) {
     onSuccess: (res) => {
       toast.success('Cobranças do Asaas sincronizadas com sucesso!');
       situacaoQ.refetch();
+      onRefresh?.();
     },
     onError: (err) => {
       toast.error(err.message || 'Erro ao sincronizar com Asaas');
@@ -117,7 +118,7 @@ export default function SituacaoCobrancas({ initialData, mes }) {
     <section className="mb-6 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 shadow-sm transition-all">
       {/* Cabeçalho da Situação das Cobranças */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--line-2)]">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg xl:text-xl font-bold tracking-tight text-[var(--ink)]">
             Situação das cobranças
           </h2>
@@ -126,6 +127,27 @@ export default function SituacaoCobrancas({ initialData, mes }) {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Asaas Ativo
             </span>
+          )}
+          {data.asaas_conectado && (
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-300/80 dark:border-emerald-800 text-emerald-950 dark:text-emerald-200 text-xs shadow-sm">
+              <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="text-slate-600 dark:text-slate-400 font-medium">Saldo atual Asaas:</span>
+              <span className="font-extrabold num text-sm text-emerald-700 dark:text-emerald-300">
+                {data.asaas_saldo != null ? money(data.asaas_saldo) : 'R$ 0,00'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  situacaoQ.refetch();
+                  onRefresh?.();
+                }}
+                disabled={situacaoQ.isFetching}
+                title="Atualizar saldo Asaas agora"
+                className="ml-0.5 p-0.5 rounded hover:bg-emerald-200/50 dark:hover:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 transition disabled:opacity-50"
+              >
+                <RefreshCw className={cx("w-3 h-3", situacaoQ.isFetching && "animate-spin")} />
+              </button>
+            </div>
           )}
         </div>
 
