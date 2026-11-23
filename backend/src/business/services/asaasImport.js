@@ -4,7 +4,8 @@ const prisma = require('../db');
 const { AsaasClient, PAID_STATUSES, CANCEL_STATUSES } = require('./asaas');
 const { DEFAULT_ACCOUNTS } = require('./seed');
 const { num, round2 } = require('../lib/money');
-const { toDate, startOfMonth } = require('../lib/dates');
+const { toDate, startOfMonth, today } = require('../lib/dates');
+const { nextJanFirst } = require('../lib/indices');
 const { audit } = require('../lib/audit');
 const { HttpError, badRequest } = require('../lib/errors');
 
@@ -166,6 +167,8 @@ async function syncAllFromAsaas(ctx, options = {}) {
           valor_recorrente: val,
           forma_pagamento: paymentForm,
           cobrar_via_asaas: true,
+          indice_reajuste: 'IPCA',
+          data_reajuste: nextJanFirst(today()),
           asaas_subscription_id: s.id,
           created_by: ctx.userId,
         },

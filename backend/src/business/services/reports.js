@@ -872,4 +872,131 @@ async function situacaoCobrancas(ctx, { ref, periodo = 'mes', forma_pagamento } 
   };
 }
 
-module.exports = { dre, contractsMargin, clientsMargin, agencyMargin, cashflow, aging, dashboard, bankBalances, subscriptionMetrics, situacaoCobrancas };
+/**
+ * Ranking dos melhores clientes (Ouro, Prata e Bronze) baseado em:
+ * - Valor pago (LTV) — peso 50%
+ * - Pontualidade (pagamentos em dia vs pagos + vencidos) — peso 30%
+ * - Tempo de casa (meses desde o primeiro contrato/pagamento) — peso 20%
+ */
+async function clientsRanking(ctx, { limit = 15 } = {}) {
+  const hoje = today();
+  const hojeYmd = hoje.toISOString().slice(0, 10);
+
+  const [clients, contracts, txs] = await Promise.all([
+    prisma.bizClient.findMany({
+      where: { company_id: ctx.companyId },
+      select: { id: true, nome: true, nome_fantasia: true, created_date: true, ativo: true },
+    }),
+    prisma.bizContract.findMany({
+      where: { company_id: ctx.companyId },
+      select: { client_id: true, data_inicio: true, status: true, tipo: true, valor_recorrente: true, periodicidade: true },
+    }),
+    prisma.bizTransaction.findMany({
+      where: { company_id: ctx.companyId, tipo: 'RECEITA', status: { not: 'CANCELADO' }, client_id: { not: null } },
+      select: { client_id: true, status: true, valor: true, valor_pago: true, vencimento: true, data_pagamento: true },
+    }),
+  ]);
+
+  const byClient = new Map();
+  for (const c of clients) {
+    byClient.set(c.id, {
+      client_id: c.id,
+      nome: c.nome_fantasia || c.nome,
+      ativo: c.ativo,
+      ltv: 0,
+      mrr: 0,
+      pagos: 0,
+      pagos_em_dia: 0,
+      vencidos_aberto: 0,
+      primeira_data: null,
+      fallback_created: c.created_date ? new Date(c.created_date) : hoje,
+    });
+  }
+
+  const considerDate = (entry, dt) => {
+    if (!dt) return;
+    const d = new Date(dt);
+    if (Number.isNaN(d.getTime()) || d > hoje) return;
+    if (!entry.primeira_data || d < entry.primeira_data) entry.primeira_data = d;
+  };
+
+  for (const ct of contracts) {
+    const e = byClient.get(ct.client_id);
+    if (!e) continue;
+    considerDate(e, ct.data_inicio);
+    if (ct.status === 'ATIVO' && ct.tipo === 'RECORRENTE') {
+      e.mrr = round2(e.mrr + num(ct.valor_recorrente) / cycleMonths(ct.periodicidade));
+    }
+  }
+
+  for (const t of txs) {
+    const e = byClient.get(t.client_id);
+    if (!e) continue;
+    const vencYmd = t.vencimento ? new Date(t.vencimento).toISOString().slice(0, 10) : null;
+    if (t.status === 'PAGO') {
+      const pago = num(t.valor_pago) || num(t.valor);
+      e.ltv = round2(e.ltv + pago);
+      e.pagos += 1;
+      const pagYmd = t.data_pagamento ? new Date(t.data_pagamento).toISOString().slice(0, 10) : vencYmd;
+      if (!vencYmd || !pagYmd || pagYmd <= vencYmd) e.pagos_em_dia += 1;
+      considerDate(e, t.data_pagamento || t.vencimento);
+    } else if (t.status === 'PENDENTE' && vencYmd && vencYmd < hojeYmd) {
+      e.vencidos_aberto += 1;
+      considerDate(e, t.vencimento);
+    }
+  }
+
+  const elegiveis = [...byClient.values()].filter((e) => e.ltv > 0 || e.mrr > 0);
+  const pagantes = elegiveis.filter((e) => e.ltv > 0);
+
+  for (const e of elegiveis) {
+    const baseData = e.primeira_data || e.fallback_created;
+    const diffMeses = Math.max(1, Math.round((hoje.getTime() - baseData.getTime()) / (30.4375 * 24 * 60 * 60 * 1000)));
+    e.meses_casa = diffMeses;
+    const avaliados = e.pagos + e.vencidos_aberto;
+    e.pontualidade_percent = avaliados > 0 ? round2((e.pagos_em_dia / avaliados) * 100) : 100;
+  }
+
+  const maxLtv = Math.max(...elegiveis.map((e) => e.ltv), 1);
+  const maxMeses = Math.max(...elegiveis.map((e) => e.meses_casa), 1);
+
+  for (const e of elegiveis) {
+    const scoreValor = (e.ltv / maxLtv) * 50;
+    const scorePont = (e.pontualidade_percent / 100) * 30;
+    const scoreTempo = (e.meses_casa / maxMeses) * 20;
+    e.score = Math.round((scoreValor + scorePont + scoreTempo) * 10) / 10;
+  }
+
+  elegiveis.sort((a, b) => (b.score - a.score) || (b.ltv - a.ltv) || (b.meses_casa - a.meses_casa));
+
+  const n = elegiveis.length;
+  const ouroCut = Math.min(3, Math.max(1, Math.ceil(n / 3)));
+  const prataCut = Math.min(6, Math.max(ouroCut + 1, Math.ceil((n * 2) / 3)));
+
+  const ranking = elegiveis.slice(0, limit).map((e, idx) => ({
+    posicao: idx + 1,
+    client_id: e.client_id,
+    nome: e.nome,
+    tier: idx < ouroCut ? 'OURO' : idx < prataCut ? 'PRATA' : 'BRONZE',
+    ltv: e.ltv,
+    mrr: e.mrr,
+    pontualidade_percent: e.pontualidade_percent,
+    pagos: e.pagos,
+    pagos_em_dia: e.pagos_em_dia,
+    vencidos_aberto: e.vencidos_aberto,
+    meses_casa: e.meses_casa,
+    score: e.score,
+  }));
+
+  const ltvMedio = pagantes.length ? round2(sum(pagantes, (e) => e.ltv) / pagantes.length) : 0;
+  const tempoMedioMeses = pagantes.length ? round2(sum(pagantes, (e) => e.meses_casa) / pagantes.length) : 0;
+
+  return {
+    ltv_medio: ltvMedio,
+    tempo_medio_meses: tempoMedioMeses,
+    total_clientes: pagantes.length,
+    ranking,
+  };
+}
+
+module.exports = { dre, contractsMargin, clientsMargin, agencyMargin, cashflow, aging, dashboard, bankBalances, subscriptionMetrics, situacaoCobrancas, clientsRanking };

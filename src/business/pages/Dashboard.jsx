@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature, Wallet, RefreshCw, Settings } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature, Wallet, RefreshCw, Settings, Trophy, Eye, EyeOff } from 'lucide-react';
 import { useBizQuery } from '../BizContext';
 import { PageHeader, Panel, MonthPicker, Kpi, Loading, ErrorBox, MarginRuler, Money, cx } from '../components/ui';
 import { TrendChart, Waterfall } from '../components/Charts';
@@ -149,7 +149,146 @@ export default function Dashboard() {
       <Panel title="Margem por contrato no mês" action={<Link to="/empresas/relatorios?aba=contratos" className="text-sm font-semibold text-[var(--result)]">Detalhar</Link>} pad={false}>
         <ContractMarginTable rows={[...d.margens.top_contratos, ...d.margens.piores_contratos.filter((p) => !d.margens.top_contratos.some((t) => t.contract_id === p.contract_id))]} meta={d.margens.meta_contrato} />
       </Panel>
+
+      <div className="mt-5">
+        <TopClientsRankingCard />
+      </div>
     </>
+  );
+}
+
+function formatTempoCasa(meses) {
+  if (!meses || meses < 1) return '< 1 mês';
+  const anos = Math.floor(meses / 12);
+  const resto = meses % 12;
+  if (anos === 0) return `${meses} ${meses === 1 ? 'mês' : 'meses'}`;
+  if (resto === 0) return `${anos} ${anos === 1 ? 'ano' : 'anos'}`;
+  return `${anos}a ${resto}m`;
+}
+
+const TIER_STYLE = {
+  OURO: {
+    label: 'Ouro',
+    medal: '🥇',
+    cls: 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-700/60',
+  },
+  PRATA: {
+    label: 'Prata',
+    medal: '🥈',
+    cls: 'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-600',
+  },
+  BRONZE: {
+    label: 'Bronze',
+    medal: '🥉',
+    cls: 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-700/60',
+  },
+};
+
+function TopClientsRankingCard() {
+  const [visible, setVisible] = useState(false);
+  const q = useBizQuery('/reports/clients-ranking', { limit: 15 }, { enabled: visible, staleTime: 60_000 });
+  const data = q.data;
+
+  return (
+    <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-[var(--line-2)]">
+        <div className="flex items-center gap-2.5">
+          <Trophy className="w-5 h-5 text-amber-500 shrink-0" />
+          <div>
+            <h2 className="text-[16px] font-bold text-[var(--ink)]">Ranking dos melhores clientes</h2>
+            <p className="text-xs text-[var(--muted)]">Ouro, Prata e Bronze · critério: maior LTV (50%), pontualidade (30%) e tempo de casa (20%)</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setVisible((v) => !v)}
+          title={visible ? 'Ocultar ranking de clientes' : 'Mostrar ranking de clientes'}
+          aria-label={visible ? 'Ocultar ranking de clientes' : 'Mostrar ranking de clientes'}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-[var(--line)] bg-[var(--paper)] text-[var(--ink-2)] hover:text-[var(--ink)] hover:border-amber-400 transition"
+        >
+          {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          {visible ? 'Ocultar' : 'Mostrar ranking'}
+        </button>
+      </div>
+
+      {!visible ? (
+        <div className="px-5 py-6 flex items-center justify-between gap-4 text-sm text-[var(--muted)]">
+          <div className="flex items-center gap-2.5">
+            <EyeOff className="w-4 h-4 opacity-60 shrink-0" />
+            <span>Ranking e LTV ocultos por privacidade. Clique no olho para visualizar.</span>
+          </div>
+          <span className="num font-bold tracking-widest opacity-50 hidden sm:inline">LTV médio: R$ ••••••</span>
+        </div>
+      ) : q.isLoading ? (
+        <div className="p-6"><Loading label="Calculando ranking e LTV…" /></div>
+      ) : q.error ? (
+        <div className="p-5"><ErrorBox error={q.error} /></div>
+      ) : !data?.ranking?.length ? (
+        <p className="text-sm text-[var(--muted)] p-5">Nenhum cliente com pagamentos ou contratos ativos ainda.</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--line-2)] bg-[var(--paper)]/60 border-b border-[var(--line-2)]">
+            <div className="px-5 py-3.5">
+              <p className="text-xs text-[var(--muted)] font-medium">LTV médio da empresa</p>
+              <p className="num text-xl font-extrabold text-[var(--in)] mt-0.5">{money(data.ltv_medio)}</p>
+            </div>
+            <div className="px-5 py-3.5">
+              <p className="text-xs text-[var(--muted)] font-medium">Tempo médio de casa</p>
+              <p className="num text-xl font-extrabold text-[var(--ink)] mt-0.5">{formatTempoCasa(Math.round(data.tempo_medio_meses))}</p>
+            </div>
+            <div className="px-5 py-3.5">
+              <p className="text-xs text-[var(--muted)] font-medium">Clientes com LTV calculado</p>
+              <p className="num text-xl font-extrabold text-[var(--ink)] mt-0.5">{data.total_clientes}</p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Nível</th>
+                  <th>Cliente</th>
+                  <th className="r">LTV (Total pago)</th>
+                  <th className="r">Pontualidade</th>
+                  <th className="r">Tempo de casa</th>
+                  <th className="r">Nota</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.ranking.map((c) => {
+                  const t = TIER_STYLE[c.tier] || TIER_STYLE.BRONZE;
+                  return (
+                    <tr key={c.client_id}>
+                      <td className="num text-[var(--muted)] font-semibold">{c.posicao}º</td>
+                      <td>
+                        <span className={cx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border', t.cls)}>
+                          <span>{t.medal}</span>
+                          {t.label}
+                        </span>
+                      </td>
+                      <td className="min-w-[200px]">
+                        <span className="font-semibold text-[var(--ink)]">{c.nome}</span>
+                        {c.mrr > 0 && <div className="text-xs text-[var(--muted)]">MRR atual: {money(c.mrr)}/mês</div>}
+                      </td>
+                      <td className="r font-bold"><Money value={c.ltv} colored /></td>
+                      <td className="r num">
+                        <span className={cx('font-semibold', c.pontualidade_percent >= 90 ? 'text-[var(--in)]' : c.pontualidade_percent < 70 ? 'text-[var(--bad)]' : 'text-amber-600 dark:text-amber-400')}>
+                          {pct(c.pontualidade_percent)}
+                        </span>
+                        <div className="text-[11px] text-[var(--muted)]">{c.pagos_em_dia}/{c.pagos + c.vencidos_aberto} em dia</div>
+                      </td>
+                      <td className="r num whitespace-nowrap">{formatTempoCasa(c.meses_casa)}</td>
+                      <td className="r num font-bold text-[var(--ink)]">{c.score} pts</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

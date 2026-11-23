@@ -6,6 +6,7 @@ const { toDate, startOfMonth, addMonths, addDays, today, ym } = require('../lib/
 const { notFound, badRequest } = require('../lib/errors');
 const { audit } = require('../lib/audit');
 const { AsaasClient } = require('./asaas');
+const { nextJanFirst } = require('../lib/indices');
 
 const INCLUDE = {
   client: { select: { id: true, nome: true, nome_fantasia: true } },
@@ -284,6 +285,8 @@ async function createSubscription(ctx, data) {
       data_fim: data.data_fim ? toDate(data.data_fim) : null,
       forma_pagamento: forma,
       cobrar_via_asaas: true,
+      indice_reajuste: 'IPCA',
+      data_reajuste: nextJanFirst(today()),
       cost_center_id: data.cost_center_id || null,
       observacoes: data.observacoes || null,
       created_by: ctx.userId || null,

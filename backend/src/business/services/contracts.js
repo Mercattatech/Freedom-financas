@@ -4,6 +4,7 @@ const { num, round2, splitInstallments, sum } = require('../lib/money');
 const { toDate, startOfMonth, addMonths, today, withDay, cycleMonths, ym } = require('../lib/dates');
 const { notFound, badRequest } = require('../lib/errors');
 const { audit } = require('../lib/audit');
+const { nextJanFirst } = require('../lib/indices');
 const { AsaasClient } = require('./asaas');
 const tx = require('./transactions');
 const { DEFAULT_ACCOUNTS } = require('./seed');
@@ -107,6 +108,15 @@ async function create(ctx, data) {
   payload.tipo = payload.tipo || (num(payload.valor_recorrente) > 0 ? 'RECORRENTE' : 'PONTUAL');
   if (!payload.titulo) payload.titulo = `${payload.tipo === 'RECORRENTE' ? 'Contrato recorrente' : 'Projeto'} — ${client.nome_fantasia || client.nome}`;
   payload.data_inicio = payload.data_inicio || today();
+  if (payload.tipo === 'RECORRENTE') {
+    if (data.indice_reajuste === undefined) payload.indice_reajuste = 'IPCA';
+    if (payload.indice_reajuste === 'NENHUM') {
+      payload.indice_reajuste = null;
+      payload.data_reajuste = null;
+    } else if (data.data_reajuste === undefined) {
+      payload.data_reajuste = nextJanFirst(today());
+    }
+  }
   if (payload.tipo === 'RECORRENTE' && !(num(payload.valor_recorrente) > 0)) throw badRequest('Contrato recorrente precisa de valor recorrente');
   if (payload.tipo === 'PONTUAL' && !(num(payload.valor_pontual) > 0)) throw badRequest('Contrato pontual precisa de valor');
 
@@ -133,6 +143,10 @@ async function update(ctx, id, data) {
   const c = await get(ctx, id);
   const payload = pickFields(data);
   delete payload.client_id;
+  if (payload.indice_reajuste === 'NENHUM') {
+    payload.indice_reajuste = null;
+    if (data.data_reajuste === undefined) payload.data_reajuste = null;
+  }
   if (Array.isArray(data.items)) {
     const items = normalizeItems(data.items);
     const tot = totalsFromItems(items);
@@ -291,7 +305,7 @@ async function setStatus(ctx, id, status, { motivo, data } = {}) {
 }
 
 /** Reajuste por percentual ou novo valor. Atualiza itens, Asaas e títulos futuros. */
-async function readjust(ctx, id, { percentual, novo_valor, a_partir }) {
+async function readjust(ctx, id, { percentual, novo_valor, a_partir, motivo, proxima_data_reajuste }) {
   const c = await get(ctx, id);
   if (c.tipo !== 'RECORRENTE') throw badRequest('Reajuste se aplica a contratos recorrentes');
   const atual = num(c.valor_recorrente);
@@ -302,11 +316,19 @@ async function readjust(ctx, id, { percentual, novo_valor, a_partir }) {
     await prisma.bizContractItem.update({ where: { id: it.id }, data: { preco_unitario: round2(num(it.preco_unitario) * fator) } });
   }
   const inicio = toDate(a_partir) || today();
+  // Próximo reajuste anual sempre no dia 1º de janeiro (se reajuste manual ocorrer em out-dez, agenda para 01/01 de 2 anos à frente para evitar duplicidade)
+  const defaultNext = inicio.getUTCMonth() >= 9
+    ? new Date(Date.UTC(inicio.getUTCFullYear() + 2, 0, 1))
+    : nextJanFirst(inicio);
+  const nextDate = proxima_data_reajuste ? toDate(proxima_data_reajuste) : defaultNext;
+  const pctLabel = `${Math.round((fator - 1) * 10000) / 100}%`;
+  const tag = motivo ? ` (${motivo})` : '';
   await prisma.bizContract.update({
     where: { id },
     data: {
-      valor_recorrente: novo, data_reajuste: addMonths(inicio, 12),
-      observacoes: `${c.observacoes || ''}\nReajuste em ${inicio.toISOString().slice(0, 10)}: R$ ${atual} → R$ ${novo}`.trim(),
+      valor_recorrente: novo,
+      data_reajuste: nextDate,
+      observacoes: `${c.observacoes || ''}\nReajuste em ${inicio.toISOString().slice(0, 10)}${tag}: R$ ${atual} → R$ ${novo} (${pctLabel})`.trim(),
     },
   });
   if (c.asaas_subscription_id) {
@@ -317,8 +339,29 @@ async function readjust(ctx, id, { percentual, novo_valor, a_partir }) {
     where: { contract_id: id, status: 'PENDENTE', recorrente: true, vencimento: { gte: inicio }, asaas_payment_id: null },
     data: { valor: novo },
   });
-  await audit(ctx, 'readjust', 'contrato', id, `Contrato #${c.numero} reajustado: R$ ${atual} → R$ ${novo} (${Math.round((fator - 1) * 10000) / 100}%)`);
+  await audit(ctx, 'readjust', 'contrato', id, `Contrato #${c.numero} reajustado${tag}: R$ ${atual} → R$ ${novo} (${pctLabel})`);
   return get(ctx, id);
+}
+
+/** Aplica o padrão anual (IPCA, todo dia 01/01) aos contratos recorrentes que ainda não têm reajuste definido. */
+async function applyDefaultReadjustment(ctx) {
+  const next = nextJanFirst(today());
+  const res = await prisma.bizContract.updateMany({
+    where: {
+      company_id: ctx.companyId,
+      tipo: 'RECORRENTE',
+      status: { in: ['ATIVO', 'PAUSADO', 'RASCUNHO'] },
+      data_reajuste: null,
+    },
+    data: {
+      indice_reajuste: 'IPCA',
+      data_reajuste: next,
+    },
+  });
+  if (res.count > 0) {
+    await audit(ctx, 'update', 'contrato', ctx.companyId, `Reajuste anual padrão (IPCA em ${next.toISOString().slice(0, 10)}) aplicado a ${res.count} contrato(s)`);
+  }
+  return { atualizados: res.count, data_reajuste: next, indice_reajuste: 'IPCA' };
 }
 
 async function remove(ctx, id) {
@@ -351,4 +394,4 @@ async function syncAsaas(ctx, id) {
   return { ok: true, count, contract: await get(ctx, id) };
 }
 
-module.exports = { list, get, create, update, activate, generateRecurring, setStatus, readjust, remove, syncAsaas, nextNumber, decorate, mrrDe, mensalDe, INCLUDE };
+module.exports = { list, get, create, update, activate, generateRecurring, setStatus, readjust, applyDefaultReadjustment, remove, syncAsaas, nextNumber, decorate, mrrDe, mensalDe, INCLUDE };

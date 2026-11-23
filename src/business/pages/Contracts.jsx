@@ -10,6 +10,7 @@ import { TransactionForm } from './Transactions';
 import { money, pct, date, todayYmd, num } from '../format';
 
 const PERIODOS = [['MENSAL', 'Mensal'], ['BIMESTRAL', 'Bimestral'], ['TRIMESTRAL', 'Trimestral'], ['SEMESTRAL', 'Semestral'], ['ANUAL', 'Anual']];
+const nextJanFirstYmd = () => `${new Date().getFullYear() + 1}-01-01`;
 
 export function ContractList() {
   const { can } = useBiz();
@@ -75,8 +76,8 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
     data_inicio: initial.data_inicio ? String(initial.data_inicio).slice(0, 10) : todayYmd(), data_fim: initial.data_fim ? String(initial.data_fim).slice(0, 10) : '',
     dia_vencimento: initial.dia_vencimento || 10, forma_pagamento: initial.forma_pagamento || 'BOLETO', cobrar_via_asaas: initial.cobrar_via_asaas ?? !!company?.asaas_configurado,
     custo_previsto_mensal: initial.custo_previsto_mensal ?? '', horas_previstas_mensal: initial.horas_previstas_mensal ?? '', comissao_percent: initial.comissao_percent ?? '',
-    aliquota_imposto: initial.aliquota_imposto ?? '', cost_center_id: initial.cost_center_id || '', responsavel: initial.responsavel || '', indice_reajuste: initial.indice_reajuste || 'IPCA',
-    data_reajuste: initial.data_reajuste ? String(initial.data_reajuste).slice(0, 10) : '', observacoes: initial.observacoes || '', ativar: true,
+    aliquota_imposto: initial.aliquota_imposto ?? '', cost_center_id: initial.cost_center_id || '', responsavel: initial.responsavel || '', indice_reajuste: isNew ? 'IPCA' : (initial.indice_reajuste || 'NENHUM'),
+    data_reajuste: initial.data_reajuste ? String(initial.data_reajuste).slice(0, 10) : (isNew ? nextJanFirstYmd() : ''), observacoes: initial.observacoes || '', ativar: true,
   });
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
   const save = useBizMutation((body) => (isNew ? biz('/contracts', { method: 'POST', body }) : biz(`/contracts/${initial.id}`, { method: 'PUT', body })), {
@@ -158,8 +159,20 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
           <Field label="Responsável"><Input value={f.responsavel} onChange={set('responsavel')} /></Field>
         </div>
         {f.tipo === 'RECORRENTE' && <>
-          <Field label="Índice de reajuste"><Select value={f.indice_reajuste} onChange={set('indice_reajuste')}><option value="IPCA">IPCA</option><option value="IGPM">IGP-M</option><option value="FIXO">Percentual fixo</option></Select></Field>
-          <Field label="Próximo reajuste"><Input type="date" value={f.data_reajuste} onChange={set('data_reajuste')} /></Field>
+          <Field label="Índice de reajuste anual" hint="Padrão: IPCA automático todo dia 01/01 (pode alterar manualmente)">
+            <Select value={f.indice_reajuste} onChange={(e) => {
+              const v = e.target.value;
+              setF({ ...f, indice_reajuste: v, data_reajuste: v === 'NENHUM' ? '' : (f.data_reajuste || nextJanFirstYmd()) });
+            }}>
+              <option value="IPCA">IPCA (automático anual em 01/01)</option>
+              <option value="IGPM">IGP-M</option>
+              <option value="FIXO">Percentual fixo</option>
+              <option value="NENHUM">Sem reajuste automático</option>
+            </Select>
+          </Field>
+          <Field label="Próximo reajuste" hint={f.indice_reajuste === 'IPCA' ? 'Aplicado automaticamente nesta data' : 'Data prevista para reajuste'}>
+            <Input type="date" value={f.data_reajuste} disabled={f.indice_reajuste === 'NENHUM'} onChange={set('data_reajuste')} />
+          </Field>
         </>}
         <div className="sm:col-span-2 p-3 rounded-lg border border-indigo-500/20 bg-indigo-50/40 dark:bg-indigo-950/20">
           <label className="flex items-start gap-2 text-sm font-medium cursor-pointer">
@@ -245,6 +258,7 @@ export function ContractDetail() {
           <Link to="/empresas/clientes" className="font-semibold hover:underline">{c.client?.nome_fantasia || c.client?.nome}</Link>
           <span className="text-[var(--muted)]">{c.tipo === 'RECORRENTE' ? `${money(c.valor_recorrente)} ${c.periodicidade.toLowerCase()}` : `Projeto de ${money(c.valor_pontual)}`}{c.tipo === 'RECORRENTE' && c.valor_pontual > 0 ? ` + ${money(c.valor_pontual)} de setup` : ''}</span>
           <span className="text-[var(--muted)]">Desde {date(c.data_inicio)}{c.data_fim ? ` até ${date(c.data_fim)}` : ''}</span>
+          {c.tipo === 'RECORRENTE' && c.data_reajuste && <span className="text-[var(--muted)]">Reajuste {c.indice_reajuste || 'anual'} em {date(c.data_reajuste)}</span>}
           <span className="text-[var(--muted)]">{c.asaas_subscription_id ? `Assinatura Asaas ${c.asaas_subscription_id}` : c.cobrar_via_asaas ? 'Cobrança pelo Asaas' : 'Cobrança manual'}</span>
           {c.motivo_cancelamento && <span className="text-[var(--bad)]">Motivo: {c.motivo_cancelamento}</span>}
         </div>
@@ -384,16 +398,24 @@ export function ContractDetail() {
 }
 
 function ReadjustModal({ c, onClose }) {
+  const ipcaQ = useBizQuery('/indices/ipca', {}, { staleTime: 60 * 60 * 1000 });
   const [f, setF] = useState({ percentual: '', novo_valor: '', a_partir: todayYmd() });
   const novo = f.novo_valor !== '' ? Number(f.novo_valor) : Number(c.valor_recorrente) * (1 + Number(f.percentual || 0) / 100);
   const m = useBizMutation((body) => biz(`/contracts/${c.id}/readjust`, { method: 'POST', body }), { success: 'Reajuste aplicado', onSuccess: onClose });
+  const ipca = ipcaQ.data;
   return (
     <Modal open onClose={onClose} title="Reajustar contrato" description={`Valor atual: ${money(c.valor_recorrente)} (${c.indice_reajuste || 'sem índice definido'})`}
       footer={<><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button loading={m.isPending} onClick={() => m.mutate({ ...(f.novo_valor !== '' ? { novo_valor: Number(f.novo_valor) } : { percentual: Number(f.percentual) }), a_partir: f.a_partir })}>Aplicar {money(novo)}</Button></>}>
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Percentual (%)"><Input type="number" step="0.01" value={f.percentual} onChange={(e) => setF({ ...f, percentual: e.target.value, novo_valor: '' })} placeholder="4,5" /></Field>
+        {ipca?.acumulado_12m != null && (
+          <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20 text-xs">
+            <span>IPCA acumulado 12m (Banco Central · ref. {ipca.referencia}): <b className="num text-emerald-700 dark:text-emerald-300">{String(ipca.acumulado_12m).replace('.', ',')}%</b></span>
+            <Button size="sm" variant="secondary" onClick={() => setF({ ...f, percentual: String(ipca.acumulado_12m), novo_valor: '' })}>Usar IPCA ({String(ipca.acumulado_12m).replace('.', ',')}%)</Button>
+          </div>
+        )}
+        <Field label="Percentual (%)"><Input type="number" step="0.01" value={f.percentual} onChange={(e) => setF({ ...f, percentual: e.target.value, novo_valor: '' })} placeholder={ipca?.acumulado_12m ? String(ipca.acumulado_12m) : '4,5'} /></Field>
         <Field label="Ou novo valor"><MoneyInput value={f.novo_valor} onChange={(v) => setF({ ...f, novo_valor: v, percentual: '' })} /></Field>
-        <Field label="A partir de" className="col-span-2" hint="Atualiza itens, assinatura no Asaas e títulos em aberto a partir desta data"><Input type="date" value={f.a_partir} onChange={(e) => setF({ ...f, a_partir: e.target.value })} /></Field>
+        <Field label="A partir de" className="col-span-2" hint="Atualiza itens, assinatura no Asaas e títulos em aberto a partir desta data. Próximo reajuste é agendado automaticamente para 01/01."><Input type="date" value={f.a_partir} onChange={(e) => setF({ ...f, a_partir: e.target.value })} /></Field>
       </div>
     </Modal>
   );

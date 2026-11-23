@@ -242,6 +242,11 @@ function createBizRouter() {
   r.post('/contracts/:id/activate', ctWrite, ah(async (req, res) => res.json(await contracts.activate(req.ctx, req.params.id))));
   r.post('/contracts/:id/status', ctWrite, ah(async (req, res) => res.json(await contracts.setStatus(req.ctx, req.params.id, req.body?.status, req.body || {}))));
   r.post('/contracts/:id/readjust', ctWrite, ah(async (req, res) => res.json(await contracts.readjust(req.ctx, req.params.id, req.body || {}))));
+  r.post('/contracts/apply-default-readjustment', ctWrite, ah(async (req, res) => res.json(await contracts.applyDefaultReadjustment(req.ctx))));
+  r.get('/indices/ipca', ah(async (req, res) => {
+    const { getIpca12m } = require('../lib/indices');
+    res.json(await getIpca12m({ force: req.query.force === '1' }));
+  }));
   r.post('/contracts/:id/generate', ctWrite, ah(async (req, res) => res.json(await contracts.generateRecurring(req.ctx, req.params.id, parseInt(req.body?.meses || 2, 10)))));
   r.post('/contracts/:id/sync-asaas', ctWrite, ah(async (req, res) => res.json(await contracts.syncAsaas(req.ctx, req.params.id))));
 
@@ -268,6 +273,7 @@ function createBizRouter() {
   r.get('/reports/dre', rep, ah(async (req, res) => res.json(await reports.dre(req.ctx, req.query))));
   r.get('/reports/contracts-margin', rep, ah(async (req, res) => res.json(await reports.contractsMargin(req.ctx, req.query))));
   r.get('/reports/clients-margin', rep, ah(async (req, res) => res.json(await reports.clientsMargin(req.ctx, req.query))));
+  r.get('/reports/clients-ranking', rep, ah(async (req, res) => res.json(await reports.clientsRanking(req.ctx, { limit: Number(req.query.limit) || 15 }))));
   r.get('/reports/agency-margin', rep, ah(async (req, res) => res.json(await reports.agencyMargin(req.ctx, req.query))));
   r.get('/reports/cashflow', rep, ah(async (req, res) => res.json(await reports.cashflow(req.ctx, { ...req.query, incluir_vencidos: req.query.incluir_vencidos === 'true' }))));
   r.get('/reports/aging', rep, ah(async (req, res) => res.json(await reports.aging(req.ctx, req.query))));
