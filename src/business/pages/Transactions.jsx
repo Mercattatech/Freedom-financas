@@ -755,7 +755,10 @@ export default function Transactions({ tipo }) {
                       <td className="num whitespace-nowrap">{date(t.vencimento)}{t.dias_atraso > 0 && <div className="text-xs text-[var(--bad)]">{t.dias_atraso} dias de atraso</div>}</td>
                       <td className="min-w-[220px]">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <button className="font-semibold text-left hover:underline" onClick={() => write && setEditing(t)}>{t.descricao}</button>
+                          <button className="group inline-flex items-center gap-1.5 font-semibold text-left hover:underline hover:text-[var(--result)]" onClick={() => write && setEditing(t)} title={write ? 'Clique para editar' : undefined}>
+                            {t.descricao}
+                            {write && <Pencil className="w-3 h-3 text-[var(--muted)] opacity-50 group-hover:opacity-100 transition-opacity" />}
+                          </button>
                           {t.recorrente && (
                             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/60 px-1.5 py-0.5 rounded" title="Lançamento recorrente">
                               <Repeat className="w-3 h-3" /> Recorrente{t.parcela ? ` ${t.parcela}/${t.total_parcelas}` : ''}
@@ -840,6 +843,7 @@ export default function Transactions({ tipo }) {
                         {write && (
                           <div className="inline-flex gap-1 items-center">
                             {!['PAGO', 'CANCELADO'].includes(t.status) && <Button size="sm" variant={receita ? 'success' : 'primary'} icon={Wallet} onClick={() => setPaying(t)}>{receita ? 'Receber' : 'Pagar'}</Button>}
+                            {t.status !== 'CANCELADO' && <Button size="sm" variant="secondary" icon={Pencil} onClick={() => setEditing(t)} title={receita ? 'Editar conta a receber' : 'Editar conta a pagar'} aria-label="Editar">Editar</Button>}
                             {receita && (
                               t.asaas_payment_id ? (
                                 <Button
@@ -956,16 +960,26 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
   const isNew = !initial.id;
   const [f, setF] = useState({
     descricao: initial.descricao || '', valor: initial.valor ?? '', vencimento: ymd(initial.vencimento) || todayYmd(),
-    competencia: initial.competencia ? ymd(initial.competencia).slice(0, 7) : '', client_id: initial.client_id || '', supplier_id: initial.supplier_id || '',
-    contract_id: initial.contract_id || presetContractId || '', account_id: initial.account_id || '', cost_center_id: initial.cost_center_id || '',
-    bank_account_id: initial.bank_account_id || '', forma_pagamento: initial.forma_pagamento || '', documento: initial.documento || '', observacoes: initial.observacoes || '',
+    competencia: initial.competencia ? ymd(initial.competencia).slice(0, 7) : '', client_id: initial.client_id || initial.client?.id || '', supplier_id: initial.supplier_id || initial.supplier?.id || '',
+    contract_id: initial.contract_id || initial.contract?.id || presetContractId || '', account_id: initial.account_id || initial.account?.id || '', cost_center_id: initial.cost_center_id || initial.costCenter?.id || '',
+    bank_account_id: initial.bank_account_id || initial.bankAccount?.id || '', forma_pagamento: initial.forma_pagamento || '', documento: initial.documento || '', observacoes: initial.observacoes || '',
     modo: 'UNICA', periodicidade: 'MENSAL', n: 12, pago: false, cobrar_asaas: false, aplicar_proximas: false,
+    data_pagamento: initial.data_pagamento ? ymd(initial.data_pagamento) : todayYmd(), valor_pago: initial.valor_pago ?? '', baixar_agora: false,
   });
+  const jaPago = !isNew && initial.status === 'PAGO';
+  const emSerie = !isNew && (initial.grupo_parcelas || initial.recorrente);
   const set = (k) => (e) => setF({ ...f, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e });
   const accounts = useMemo(() => L.accounts.filter((a) => a.natureza === tipo), [L.accounts, tipo]);
   const grouped = useMemo(() => Object.entries(accounts.reduce((acc, a) => { (acc[a.grupo_dre] ||= []).push(a); return acc; }, {})), [accounts]);
-  const save = useBizMutation((body) => (isNew ? biz('/transactions', { method: 'POST', body }) : biz(`/transactions/${initial.id}`, { method: 'PUT', body })), {
-    success: isNew ? 'Lançamento criado' : 'Lançamento atualizado', onSuccess: onClose,
+  const save = useBizMutation(async (body) => {
+    if (isNew) return biz('/transactions', { method: 'POST', body });
+    const upd = await biz(`/transactions/${initial.id}`, { method: 'PUT', body });
+    if (f.baixar_agora && !jaPago) {
+      return biz(`/transactions/${initial.id}/pay`, { method: 'POST', body: { data_pagamento: f.data_pagamento, bank_account_id: f.bank_account_id || undefined } });
+    }
+    return upd;
+  }, {
+    success: isNew ? 'Lançamento criado' : (f.baixar_agora ? (receita ? 'Atualizado e recebido' : 'Atualizado e pago') : 'Lançamento atualizado'), onSuccess: onClose,
   });
   const submit = (e) => {
     e.preventDefault();
@@ -987,17 +1001,32 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
       }
       if (f.pago) { body.pago = true; body.bank_account_id = f.bank_account_id || null; }
       if (f.cobrar_asaas) body.cobrar_asaas = true;
-    } else body.aplicar_proximas = f.aplicar_proximas;
+    } else {
+      body.aplicar_proximas = f.aplicar_proximas;
+      body.bank_account_id = f.bank_account_id || null;
+      if (jaPago) {
+        if (f.data_pagamento) body.data_pagamento = f.data_pagamento;
+        if (f.valor_pago !== '' && f.valor_pago !== null) body.valor_pago = Number(f.valor_pago);
+      }
+    }
     save.mutate(body);
   };
   return (
-    <Modal open onClose={onClose} width={680} title={isNew ? (receita ? 'Nova conta a receber' : 'Nova conta a pagar') : 'Editar lançamento'}
+    <Modal open onClose={onClose} width={680} title={isNew ? (receita ? 'Nova conta a receber' : 'Nova conta a pagar') : (receita ? 'Editar conta a receber' : 'Editar conta a pagar')}
       footer={<>
         {!isNew && onDelete && initial.status !== 'PAGO' && <Button variant="danger" icon={Trash2} className="mr-auto" onClick={() => window.confirm('Excluir este lançamento?') && onDelete(initial.id)}>Excluir</Button>}
         <Button variant="secondary" onClick={onClose}>Cancelar</Button>
         <Button type="submit" form="txform" loading={save.isPending}>{isNew ? 'Lançar' : 'Salvar'}</Button>
       </>}>
       <form id="txform" onSubmit={submit} className="grid sm:grid-cols-2 gap-4">
+        {!isNew && (
+          <div className="sm:col-span-2 flex flex-wrap items-center gap-2 text-xs p-2.5 rounded-lg bg-[var(--surface-2)] border border-[var(--line)]">
+            <StatusPill status={initial.status} />
+            {initial.recorrente && <span className="inline-flex items-center gap-1 font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-950/60 px-1.5 py-0.5 rounded"><Repeat className="w-3 h-3" /> Recorrente{initial.parcela ? ` ${initial.parcela}/${initial.total_parcelas}` : ''}</span>}
+            {initial.parcela && !initial.recorrente && <span className="font-semibold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/60 px-1.5 py-0.5 rounded">Parcela {initial.parcela}/{initial.total_parcelas}</span>}
+            {jaPago && <span className="text-[var(--muted)]">{receita ? 'Recebido' : 'Pago'} em {date(initial.data_pagamento)} — {money(initial.valor_pago)}</span>}
+          </div>
+        )}
         <Field label="Descrição" className="sm:col-span-2"><Input required value={f.descricao} onChange={set('descricao')} placeholder={receita ? 'Mensalidade outubro — Locadora Alfa' : 'Edição de vídeos — freelancer'} /></Field>
         <Field label={f.modo === 'PARCELAS' ? 'Valor total' : 'Valor'}><MoneyInput required value={f.valor} onChange={set('valor')} /></Field>
         <Field label={f.modo === 'UNICA' ? 'Vencimento' : '1º vencimento'}><Input type="date" required value={f.vencimento} onChange={set('vencimento')} /></Field>
@@ -1019,6 +1048,17 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
         <Field label="Competência" hint="Mês do resultado na DRE. Padrão: mês do vencimento."><Input type="month" value={f.competencia} onChange={set('competencia')} placeholder={currentYm()} /></Field>
         <Field label="Forma de pagamento"><Select value={f.forma_pagamento} onChange={set('forma_pagamento')}><option value="">—</option>{FORMAS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</Select></Field>
         <Field label="Documento / NF"><Input value={f.documento} onChange={set('documento')} /></Field>
+        {!isNew && <Field label="Conta financeira (banco / caixa)"><Select value={f.bank_account_id} onChange={set('bank_account_id')}><option value="">—</option>{L.banks.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}</Select></Field>}
+        {jaPago && <>
+          <Field label={receita ? 'Data do recebimento' : 'Data do pagamento'}><Input type="date" value={f.data_pagamento} onChange={set('data_pagamento')} /></Field>
+          <Field label={receita ? 'Valor recebido' : 'Valor pago'}><MoneyInput value={f.valor_pago} onChange={set('valor_pago')} /></Field>
+        </>}
+        {!isNew && !jaPago && initial.status !== 'CANCELADO' && (
+          <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer"><input type="checkbox" checked={f.baixar_agora} onChange={set('baixar_agora')} className="w-4 h-4" />{receita ? 'Marcar como recebido ao salvar' : 'Marcar como pago ao salvar'}</label>
+            {f.baixar_agora && <Field label={receita ? 'Data do recebimento' : 'Data do pagamento'}><Input type="date" value={f.data_pagamento} onChange={set('data_pagamento')} /></Field>}
+          </div>
+        )}
         {isNew && (
           <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-3 space-y-3 bg-[var(--surface-2)]">
             <div className="grid sm:grid-cols-2 gap-3 items-end">
@@ -1116,7 +1156,12 @@ export function TransactionForm({ tipo, initial, onClose, onDelete, presetContra
             )}
           </div>
         )}
-        {!isNew && initial.grupo_parcelas && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.aplicar_proximas} onChange={set('aplicar_proximas')} className="w-4 h-4" />Aplicar classificação às próximas parcelas em aberto</label>}
+        {emSerie && initial.grupo_parcelas && (
+          <label className="sm:col-span-2 flex items-start gap-2 text-sm p-3 rounded-lg border border-sky-500/30 bg-sky-50/50 dark:bg-sky-950/20 cursor-pointer">
+            <input type="checkbox" checked={f.aplicar_proximas} onChange={set('aplicar_proximas')} className="w-4 h-4 mt-0.5" />
+            <span><b>Aplicar também aos próximos lançamentos em aberto desta série</b><span className="block text-xs text-[var(--muted)]">Descrição, {initial.recorrente ? 'valor, ' : ''}fornecedor/cliente, contrato, conta DRE, centro de custo, forma de pagamento e conta financeira.</span></span>
+          </label>
+        )}
         <Field label="Observações" className="sm:col-span-2"><Textarea value={f.observacoes} onChange={set('observacoes')} rows={2} /></Field>
       </form>
     </Modal>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Repeat, Play, Pause, XCircle, Percent, Clock3, Receipt, X, RefreshCw, Link2, Copy, ExternalLink, Share2, AlertTriangle, Check } from 'lucide-react';
+import { Plus, Repeat, Play, Pause, XCircle, Percent, Clock3, Receipt, X, RefreshCw, Link2, Copy, ExternalLink, Share2, AlertTriangle, Check, Pencil, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -143,8 +143,13 @@ function ContractForm({ initial = {}, onClose, onSaved }) {
             <option value="MANUAL">Manual (fora do Asaas)</option>
           </Select>
         </Field>
-        <div className="sm:col-span-2 rounded-lg border border-[var(--line)] p-4 grid sm:grid-cols-3 gap-4">
-          <p className="sm:col-span-3 text-sm font-bold">Orçamento de margem <span className="font-normal text-[var(--muted)]">para comparar previsto × realizado</span></p>
+        <div id="orcamento-margem" className="sm:col-span-2 rounded-lg border border-[var(--line)] p-4 grid sm:grid-cols-3 gap-4">
+          <p className="sm:col-span-3 text-sm font-bold">Margem prevista <span className="font-normal text-[var(--muted)]">— informe a margem (%) ou o custo direto previsto; um calcula o outro</span></p>
+          <Field label="Margem prevista (%)" hint={mensal > 0 ? `Sobre ${money(mensal)}/mês` : 'Informe o valor do contrato primeiro'}>
+            <Input type="number" step="0.1" min="-100" max="100" disabled={!(mensal > 0)} value={mensal > 0 && f.custo_previsto_mensal !== '' && f.custo_previsto_mensal !== null ? Math.round(((mensal - Number(f.custo_previsto_mensal || 0)) / mensal) * 1000) / 10 : ''}
+              placeholder="Ex.: 40"
+              onChange={(e) => { const v = e.target.value; setF({ ...f, custo_previsto_mensal: v === '' ? '' : Math.round(mensal * (1 - Number(v) / 100) * 100) / 100 }); }} />
+          </Field>
           <Field label="Custo direto previsto/mês"><MoneyInput value={f.custo_previsto_mensal} onChange={set('custo_previsto_mensal')} /></Field>
           <Field label="Horas previstas/mês"><Input type="number" step="0.5" value={f.horas_previstas_mensal} onChange={set('horas_previstas_mensal')} /></Field>
           <Field label="Comissão (%)" hint={`Padrão da empresa: ${pct(company?.aliquota_comissao)}`}><Input type="number" step="0.1" value={f.comissao_percent ?? ''} onChange={set('comissao_percent')} /></Field>
@@ -233,7 +238,7 @@ export function ContractDetail() {
         {c.status === 'ATIVO' && <Button variant="secondary" icon={Pause} onClick={() => status.mutate({ s: 'PAUSADO' })}>Pausar</Button>}
         {c.status === 'PAUSADO' && <Button variant="secondary" icon={Play} onClick={() => status.mutate({ s: 'ATIVO' })}>Retomar</Button>}
         {['ATIVO', 'PAUSADO'].includes(c.status) && <Button variant="danger" icon={XCircle} onClick={() => { const m = window.prompt('Motivo do cancelamento (aparece no relatório de churn):'); if (m !== null) status.mutate({ s: 'CANCELADO', motivo: m }); }}>Cancelar</Button>}
-        {!['CANCELADO', 'ENCERRADO'].includes(c.status) && <Button variant="ghost" onClick={() => setEdit(true)}>Editar</Button>}
+        {!['CANCELADO', 'ENCERRADO'].includes(c.status) && <Button variant="secondary" icon={Pencil} onClick={() => setEdit(true)}>Editar</Button>}
       </>}>
         <div className="flex flex-wrap items-center gap-3 mt-2 text-sm">
           <StatusPill status={c.status} />
@@ -293,6 +298,20 @@ export function ContractDetail() {
               </div>
             );
           })()}
+        </div>
+      )}
+
+      {c.tipo === 'RECORRENTE' && (
+        <div className="mb-5 p-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-[var(--surface-2)] flex items-center justify-center"><Target className="w-4 h-4 text-[var(--result)]" /></div>
+            <div>
+              <span className="text-xs text-[var(--muted)] block">Margem prevista</span>
+              <span className="font-bold text-lg num">{c.margem_prevista_percent !== null && c.margem_prevista_percent !== undefined ? pct(c.margem_prevista_percent) : '—'}</span>
+              <span className="text-xs text-[var(--muted)] ml-2">custo direto previsto {money(c.custo_previsto_mensal || 0)}/mês · meta da empresa {pct(meta)}</span>
+            </div>
+          </div>
+          {w && !['CANCELADO', 'ENCERRADO'].includes(c.status) && <Button size="sm" variant="secondary" icon={Pencil} onClick={() => setEdit(true)}>Ajustar margem prevista</Button>}
         </div>
       )}
 
