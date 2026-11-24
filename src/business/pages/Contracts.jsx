@@ -4,7 +4,7 @@ import { Plus, Repeat, Play, Pause, XCircle, Percent, Clock3, Receipt, X, Refres
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
-import { PageHeader, Button, Field, Input, Select, Textarea, MoneyInput, Modal, StatusPill, Money, Empty, Loading, ErrorBox, SearchInput, useDebounced, Panel, MarginRuler, cx } from '../components/ui';
+import { PageHeader, Button, Field, Input, Select, Textarea, MoneyInput, Modal, StatusPill, Money, Empty, Loading, ErrorBox, SearchInput, useDebounced, Panel, MarginRuler, InfoTip, cx } from '../components/ui';
 import { useLookups } from '../components/lookups';
 import { TransactionForm } from './Transactions';
 import { money, pct, date, todayYmd, num } from '../format';
@@ -29,8 +29,8 @@ export function ContractList() {
         actions={can('contratos:write') && <Button icon={Plus} onClick={() => setCreating(true)}>Novo contrato</Button>} />
       {r && (
         <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-4 divide-x divide-[var(--line-2)] mb-5">
-          {[['MRR', money(r.mrr)], ['ARR', money(r.arr)], ['Contratos ativos', r.ativos], ['Ticket médio mensal', money(r.ticket_medio)]].map(([l, v]) => (
-            <div key={l} className="px-5 py-4"><p className="text-[13px] font-semibold text-[var(--muted)]">{l}</p><p className="num text-[22px] font-extrabold">{v}</p></div>
+          {[['MRR', money(r.mrr), 'mrr'], ['ARR', money(r.arr), 'arr'], ['Contratos ativos', r.ativos, 'contratos_ativos'], ['Ticket médio mensal', money(r.ticket_medio), 'ticket_medio']].map(([l, v, h]) => (
+            <div key={l} className="px-5 py-4"><p className="text-[13px] font-semibold text-[var(--muted)] inline-flex items-center gap-1">{l} <InfoTip help={h} /></p><p className="num text-[22px] font-extrabold">{v}</p></div>
           ))}
         </div>
       )}
@@ -206,10 +206,10 @@ function MarginCard({ title, m, meta }) {
     <Panel title={title}>
       <dl className="text-[14px] space-y-1.5">
         {rows.map(([l, v]) => <div key={l} className="flex justify-between"><dt className="text-[var(--ink-2)]">{l}</dt><dd><Money value={v} /></dd></div>)}
-        <div className="flex justify-between pt-2 mt-1 border-t border-[var(--line)] font-bold"><dt>Margem de contribuição</dt><dd><Money value={m.margem_contribuicao} colored /></dd></div>
+        <div className="flex justify-between pt-2 mt-1 border-t border-[var(--line)] font-bold"><dt className="inline-flex items-center gap-1">Margem de contribuição <InfoTip help="margem_contribuicao" /></dt><dd><Money value={m.margem_contribuicao} colored /></dd></div>
         <div className="pt-1"><MarginRuler value={m.margem_contribuicao_percent} meta={meta} width={180} /></div>
-        <div className="flex justify-between text-[var(--ink-2)] pt-2"><dt>Overhead rateado</dt><dd><Money value={-m.rateio_overhead} /></dd></div>
-        <div className="flex justify-between font-bold"><dt>Margem líquida</dt><dd><Money value={m.margem_liquida} colored /> <span className="text-xs text-[var(--muted)] num">({pct(m.margem_liquida_percent)})</span></dd></div>
+        <div className="flex justify-between text-[var(--ink-2)] pt-2"><dt className="inline-flex items-center gap-1">Overhead rateado <InfoTip help="overhead" /></dt><dd><Money value={-m.rateio_overhead} /></dd></div>
+        <div className="flex justify-between font-bold"><dt className="inline-flex items-center gap-1">Margem líquida <InfoTip help="margem_liquida" /></dt><dd><Money value={m.margem_liquida} colored /> <span className="text-xs text-[var(--muted)] num">({pct(m.margem_liquida_percent)})</span></dd></div>
         {m.receita_por_hora && <p className="text-xs text-[var(--muted)] pt-2">Receita por hora trabalhada: <b className="num">{money(m.receita_por_hora)}</b></p>}
         {m.previsto?.meses_ativos > 0 && <p className="text-xs text-[var(--muted)]">Previsto no período: receita <b className="num">{money(m.previsto.receita)}</b>, custo direto <b className="num">{money(m.previsto.custo_direto)}</b>, {num(m.previsto.horas)}h.</p>}
       </dl>
@@ -320,7 +320,7 @@ export function ContractDetail() {
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-[var(--surface-2)] flex items-center justify-center"><Target className="w-4 h-4 text-[var(--result)]" /></div>
             <div>
-              <span className="text-xs text-[var(--muted)] block">Margem prevista</span>
+              <span className="text-xs text-[var(--muted)] inline-flex items-center gap-1">Margem prevista <InfoTip help="margem_prevista" /></span>
               <span className="font-bold text-lg num">{c.margem_prevista_percent !== null && c.margem_prevista_percent !== undefined ? pct(c.margem_prevista_percent) : '—'}</span>
               <span className="text-xs text-[var(--muted)] ml-2">custo direto previsto {money(c.custo_previsto_mensal || 0)}/mês · meta da empresa {pct(meta)}</span>
             </div>

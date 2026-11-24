@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, TrendingUp, Package, CalendarClock, FileSignature, Wallet, RefreshCw, Settings, Trophy, Eye, EyeOff } from 'lucide-react';
 import { useBizQuery } from '../BizContext';
-import { PageHeader, Panel, MonthPicker, Kpi, Loading, ErrorBox, MarginRuler, Money, cx } from '../components/ui';
+import { PageHeader, Panel, MonthPicker, Kpi, InfoTip, Loading, ErrorBox, MarginRuler, Money, cx } from '../components/ui';
 import { TrendChart, Waterfall } from '../components/Charts';
 import SituacaoCobrancas from '../components/SituacaoCobrancas';
 import { money, pct, currentYm, monthLong, date } from '../format';
@@ -89,19 +89,19 @@ export default function Dashboard() {
           {a?.cascata && r.receita_bruta ? <Waterfall steps={a.cascata} height={330} /> : <p className="text-sm text-[var(--muted)] py-16 text-center">Sem receitas lançadas na competência deste mês.</p>}
         </Panel>
         <section className="rounded-xl bg-[var(--side)] text-white p-6 flex flex-col border border-white/5">
-          <p className="text-sm text-[#AEB6C7] font-semibold">Lucro líquido do mês</p>
+          <p className="text-sm text-[#AEB6C7] font-semibold inline-flex items-center gap-1.5">Lucro líquido do mês <InfoTip help="lucro_liquido" dark /></p>
           <p className={cx('num text-[38px] font-extrabold leading-tight mt-1', r.lucro_liquido < 0 && 'text-[#F59E8B]')}>{money(r.lucro_liquido)}</p>
           <dl className="mt-5 space-y-3 text-[14px]">
             {[
-              ['Receita bruta', money(r.receita_bruta)],
-              ['Margem bruta', pct(r.margem_bruta)],
-              ['Margem EBITDA', pct(r.margem_ebitda)],
-              ['Margem líquida da agência', pct(r.margem_liquida)],
-              ['Margem de contribuição dos contratos', pct(d.margens.margem_contribuicao_percent)],
-            ].map(([k, v]) => <div key={k} className="flex justify-between gap-4 border-b border-white/10 pb-2"><dt className="text-[#C9CFDB]">{k}</dt><dd className="num font-bold">{v}</dd></div>)}
+              ['Receita bruta', money(r.receita_bruta), 'receita_bruta'],
+              ['Margem bruta', pct(r.margem_bruta), 'margem_bruta'],
+              ['Margem EBITDA', pct(r.margem_ebitda), 'margem_ebitda'],
+              ['Margem líquida da agência', pct(r.margem_liquida), 'margem_liquida'],
+              ['Margem de contribuição dos contratos', pct(d.margens.margem_contribuicao_percent), 'margem_contribuicao'],
+            ].map(([k, v, h]) => <div key={k} className="flex justify-between gap-4 border-b border-white/10 pb-2"><dt className="text-[#C9CFDB] inline-flex items-center gap-1">{k} <InfoTip help={h} dark /></dt><dd className="num font-bold">{v}</dd></div>)}
           </dl>
           {a?.ponto_equilibrio?.receita_minima_mensal && (
-            <p className="text-[13px] text-[#AEB6C7] mt-auto pt-4">Ponto de equilíbrio: <b className="text-white num">{money(a.ponto_equilibrio.receita_minima_mensal)}</b>/mês de receita.</p>
+            <p className="text-[13px] text-[#AEB6C7] mt-auto pt-4 inline-flex items-center gap-1 flex-wrap">Ponto de equilíbrio <InfoTip help="ponto_equilibrio" dark />: <b className="text-white num">{money(a.ponto_equilibrio.receita_minima_mensal)}</b>/mês de receita.</p>
           )}
         </section>
       </div>
@@ -111,21 +111,22 @@ export default function Dashboard() {
         temAsaas ? "xl:grid-cols-7" : "xl:grid-cols-6"
       )}>
         {[
-          <Kpi key="mrr" label="Receita recorrente (MRR)" value={money(s.mrr)} detail={`ARR ${money(s.arr)} · ${s.contratos_ativos} contratos`} />,
-          <Kpi key="nm" label="Novo MRR no mês" value={money(s.crescimento_liquido_mrr)} tone={s.crescimento_liquido_mrr < 0 ? 'bad' : 'in'} detail={`+${money(s.novo_mrr)} novos, −${money(s.churn_mrr)} churn (${pct(s.churn_percent)})`} />,
-          <Kpi key="cx" label="Caixa hoje" value={money(cx2.saldo_atual)} tone={cx2.saldo_atual < 0 ? 'bad' : undefined} detail={`${cx2.contas.length} contas financeiras`} />,
+          <Kpi key="mrr" label="Receita recorrente (MRR)" help="mrr" value={money(s.mrr)} detail={`ARR ${money(s.arr)} · ${s.contratos_ativos} contratos`} />,
+          <Kpi key="nm" label="Novo MRR no mês" help="novo_mrr" value={money(s.crescimento_liquido_mrr)} tone={s.crescimento_liquido_mrr < 0 ? 'bad' : 'in'} detail={`+${money(s.novo_mrr)} novos, −${money(s.churn_mrr)} churn (${pct(s.churn_percent)})`} />,
+          <Kpi key="cx" label="Caixa hoje" help="caixa" value={money(cx2.saldo_atual)} tone={cx2.saldo_atual < 0 ? 'bad' : undefined} detail={`${cx2.contas.length} contas financeiras`} />,
           ...(temAsaas ? [
             <Kpi
               key="asaas"
               label="Saldo Asaas"
+              help="saldo_asaas"
               value={saldoAsaas != null ? money(saldoAsaas) : 'R$ 0,00'}
               tone="in"
-              detail={asaas.ambiente === 'PRODUCAO' ? 'Disponível em conta (Prod)' : 'Disponível em conta (Sandbox)'}
+              detail={asaasAmbiente === 'PRODUCAO' ? 'Disponível em conta (Prod)' : 'Disponível em conta (Sandbox)'}
             />
           ] : []),
-          <Kpi key="rec" label="A receber em 30 dias" value={money(cx2.a_receber_30d)} tone="in" />,
-          <Kpi key="pag" label="A pagar em 30 dias" value={money(cx2.a_pagar_30d)} tone="out" />,
-          <Kpi key="inad" label="Em atraso a receber" value={money(cx2.vencido_receber)} tone={cx2.vencido_receber > 0 ? 'bad' : undefined} detail={`Inadimplência ${pct(cx2.inadimplencia_percent)} dos últimos 90 dias`} />,
+          <Kpi key="rec" label="A receber em 30 dias" help="receber_30d" value={money(cx2.a_receber_30d)} tone="in" />,
+          <Kpi key="pag" label="A pagar em 30 dias" help="pagar_30d" value={money(cx2.a_pagar_30d)} tone="out" />,
+          <Kpi key="inad" label="Em atraso a receber" help="inadimplencia" value={money(cx2.vencido_receber)} tone={cx2.vencido_receber > 0 ? 'bad' : undefined} detail={`Inadimplência ${pct(cx2.inadimplencia_percent)} dos últimos 90 dias`} />,
         ].map((k, i) => <div key={i} className="px-5 py-4">{k}</div>)}
       </div>
 
@@ -229,11 +230,11 @@ function TopClientsRankingCard() {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-[var(--line-2)] bg-[var(--paper)]/60 border-b border-[var(--line-2)]">
             <div className="px-5 py-3.5">
-              <p className="text-xs text-[var(--muted)] font-medium">LTV médio da empresa</p>
+              <p className="text-xs text-[var(--muted)] font-medium inline-flex items-center gap-1">LTV médio da empresa <InfoTip help="ltv_medio" /></p>
               <p className="num text-xl font-extrabold text-[var(--in)] mt-0.5">{money(data.ltv_medio)}</p>
             </div>
             <div className="px-5 py-3.5">
-              <p className="text-xs text-[var(--muted)] font-medium">Tempo médio de casa</p>
+              <p className="text-xs text-[var(--muted)] font-medium inline-flex items-center gap-1">Tempo médio de casa <InfoTip help="tempo_casa" /></p>
               <p className="num text-xl font-extrabold text-[var(--ink)] mt-0.5">{formatTempoCasa(Math.round(data.tempo_medio_meses))}</p>
             </div>
             <div className="px-5 py-3.5">
@@ -249,9 +250,9 @@ function TopClientsRankingCard() {
                   <th>#</th>
                   <th>Nível</th>
                   <th>Cliente</th>
-                  <th className="r">LTV (Total pago)</th>
-                  <th className="r">Pontualidade</th>
-                  <th className="r">Tempo de casa</th>
+                  <th className="r"><span className="inline-flex items-center gap-1">LTV (Total pago) <InfoTip help="ltv" /></span></th>
+                  <th className="r"><span className="inline-flex items-center gap-1">Pontualidade <InfoTip help="pontualidade" /></span></th>
+                  <th className="r"><span className="inline-flex items-center gap-1">Tempo de casa <InfoTip help="tempo_casa" /></span></th>
                   <th className="r">Nota</th>
                 </tr>
               </thead>
@@ -304,7 +305,7 @@ export function ContractMarginTable({ rows, meta, full }) {
       <table className="tbl">
         <thead><tr>
           <th>Contrato</th><th className="r">Receita</th>{full && <><th className="r">Impostos</th><th className="r">Custos</th><th className="r">Equipe</th><th className="r">Horas</th></>}
-          <th className="r">{full ? 'Contribuição' : 'Margem de contribuição'}</th><th className="r">Margem %</th>{full && <><th className="r">Overhead</th><th className="r">Margem líquida</th></>}
+          <th className="r"><span className="inline-flex items-center gap-1">{full ? 'Contribuição' : 'Margem de contribuição'} <InfoTip help="margem_contribuicao" /></span></th><th className="r">Margem %</th>{full && <><th className="r"><span className="inline-flex items-center gap-1">Overhead <InfoTip help="overhead" /></span></th><th className="r"><span className="inline-flex items-center gap-1">Margem líquida <InfoTip help="margem_liquida" /></span></th></>}
         </tr></thead>
         <tbody>
           {rows.map((c) => (

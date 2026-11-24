@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ChevronRight, Download, Printer } from 'lucide-react';
 import { useBiz, useBizQuery } from '../BizContext';
-import { PageHeader, Tabs, RangePicker, Loading, ErrorBox, Panel, Money, Kpi, Button, MarginRuler, Select, cx } from '../components/ui';
+import { PageHeader, Tabs, RangePicker, Loading, ErrorBox, Panel, Money, Kpi, InfoTip, Button, MarginRuler, Select, cx } from '../components/ui';
 import { CashflowChart, Waterfall } from '../components/Charts';
 import { ContractMarginTable } from './Dashboard';
 import { money, pct, monthLabel, currentYm, shiftYm, num, date } from '../format';
@@ -53,8 +53,8 @@ function DreTab({ from, to }) {
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <Select value={regime} onChange={(e) => setRegime(e.target.value)} className="w-[240px]"><option value="competencia">Regime de competência</option><option value="caixa">Regime de caixa (pagos)</option></Select>
         <Button variant="secondary" size="sm" icon={Download} onClick={exportCsv}>Exportar CSV</Button>
-        <div className="flex gap-6 ml-auto text-sm">
-          {[['Margem bruta', d.indicadores.margem_bruta], ['Margem EBITDA', d.indicadores.margem_ebitda], ['Margem líquida', d.indicadores.margem_liquida]].map(([l, v]) => <span key={l}>{l} <b className="num">{pct(v)}</b></span>)}
+        <div className="flex flex-wrap gap-6 ml-auto text-sm">
+          {[['Margem bruta', d.indicadores.margem_bruta, 'margem_bruta'], ['Margem EBITDA', d.indicadores.margem_ebitda, 'margem_ebitda'], ['Margem líquida', d.indicadores.margem_liquida, 'margem_liquida']].map(([l, v, h]) => <span key={l} className="inline-flex items-center gap-1">{l} <InfoTip help={h} /> <b className="num">{pct(v)}</b></span>)}
         </div>
       </div>
       <section className="rounded-xl border border-[var(--line)] bg-[var(--surface)] overflow-x-auto">
@@ -97,11 +97,11 @@ function ContractsTab({ from, to }) {
     <>
       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-5 divide-x divide-[var(--line-2)] mb-5">
         {[
-          <Kpi key="1" label="Receita dos contratos" value={money(T.receita)} />,
-          <Kpi key="2" label="Margem de contribuição" value={money(T.margem_contribuicao)} detail={pct(T.margem_contribuicao_percent)} tone={T.margem_contribuicao < 0 ? 'bad' : 'in'} />,
-          <Kpi key="3" label="Overhead não alocado" value={money(d.overhead.nao_alocado)} detail={`Rateado por ${({ RECEITA: 'receita', HORAS: 'horas', NENHUM: 'nenhum critério' })[d.rateio]}`} />,
-          <Kpi key="4" label="Margem líquida" value={money(T.margem_liquida)} detail={pct(T.margem_liquida_percent)} tone={T.margem_liquida < 0 ? 'bad' : undefined} />,
-          <Kpi key="5" label="Horas em contratos" value={`${num(T.horas)}h`} detail={T.horas ? `${money(T.receita / T.horas)} de receita/hora` : undefined} />,
+          <Kpi key="1" label="Receita dos contratos" help="receita_bruta" value={money(T.receita)} />,
+          <Kpi key="2" label="Margem de contribuição" help="margem_contribuicao" value={money(T.margem_contribuicao)} detail={pct(T.margem_contribuicao_percent)} tone={T.margem_contribuicao < 0 ? 'bad' : 'in'} />,
+          <Kpi key="3" label="Overhead não alocado" help="overhead" value={money(d.overhead.nao_alocado)} detail={`Rateado por ${({ RECEITA: 'receita', HORAS: 'horas', NENHUM: 'nenhum critério' })[d.rateio]}`} />,
+          <Kpi key="4" label="Margem líquida" help="margem_liquida" value={money(T.margem_liquida)} detail={pct(T.margem_liquida_percent)} tone={T.margem_liquida < 0 ? 'bad' : undefined} />,
+          <Kpi key="5" label="Horas em contratos" help="horas_contratos" value={`${num(T.horas)}h`} detail={T.horas ? `${money(T.receita / T.horas)} de receita/hora` : undefined} />,
         ].map((k, i) => <div key={i} className="px-5 py-4">{k}</div>)}
       </div>
       <Panel title={`Contratos (meta de margem: ${pct(d.meta_margem)})`} pad={false} action={<Button size="sm" variant="secondary" icon={Download} onClick={exportCsv}>CSV</Button>}>
@@ -148,10 +148,10 @@ function AgencyTab({ from, to }) {
     <div className="space-y-5">
       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-4 divide-x divide-[var(--line-2)]">
         {[
-          <Kpi key="1" label="Margem bruta" value={pct(a.dre.margem_bruta)} detail={money(a.dre.lucro_bruto)} />,
-          <Kpi key="2" label="Margem EBITDA" value={pct(a.dre.margem_ebitda)} detail={money(a.dre.ebitda)} />,
-          <Kpi key="3" label="Margem líquida" value={pct(a.dre.margem_liquida)} detail={money(a.dre.lucro_liquido)} tone={a.dre.lucro_liquido < 0 ? 'bad' : 'in'} />,
-          <Kpi key="4" label="Receita recorrente" value={pct(a.mix_receita.recorrente_percent)} detail={`${money(a.mix_receita.recorrente)} recorrente, ${money(a.mix_receita.pontual)} pontual`} />,
+          <Kpi key="1" label="Margem bruta" help="margem_bruta" value={pct(a.dre.margem_bruta)} detail={money(a.dre.lucro_bruto)} />,
+          <Kpi key="2" label="Margem EBITDA" help="margem_ebitda" value={pct(a.dre.margem_ebitda)} detail={money(a.dre.ebitda)} />,
+          <Kpi key="3" label="Margem líquida" help="margem_liquida" value={pct(a.dre.margem_liquida)} detail={money(a.dre.lucro_liquido)} tone={a.dre.lucro_liquido < 0 ? 'bad' : 'in'} />,
+          <Kpi key="4" label="Receita recorrente" help="receita_recorrente_mix" value={pct(a.mix_receita.recorrente_percent)} detail={`${money(a.mix_receita.recorrente)} recorrente, ${money(a.mix_receita.pontual)} pontual`} />,
         ].map((k, i) => <div key={i} className="px-5 py-4">{k}</div>)}
       </div>
       <Panel title="Cascata do resultado">{a.dre.receita_bruta ? <Waterfall steps={a.cascata} height={300} /> : <p className="text-sm text-[var(--muted)]">Sem receitas no período.</p>}</Panel>
@@ -172,7 +172,7 @@ function AgencyTab({ from, to }) {
             <Row l="Custo de horas não alocadas" v={<Money value={a.capacidade.custo_ocioso} className="text-[var(--out)]" />} />
           </dl>
         </Panel>
-        <Panel title="Ponto de equilíbrio">
+        <Panel title={<span className="inline-flex items-center gap-1.5">Ponto de equilíbrio <InfoTip help="ponto_equilibrio" /></span>}>
           <dl className="text-[14px] space-y-2">
             <Row l="Despesas fixas por mês" v={<Money value={a.ponto_equilibrio.despesas_fixas_mensais} />} />
             <Row l="Índice de margem de contribuição" v={pct(a.ponto_equilibrio.indice_margem_contribuicao)} />
@@ -203,10 +203,10 @@ function CashTab() {
       </div>
       <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] grid grid-cols-2 md:grid-cols-4 divide-x divide-[var(--line-2)]">
         {[
-          <Kpi key="1" label="Saldo hoje" value={money(d.saldo_inicial)} />,
-          <Kpi key="2" label={`Saldo em ${d.dias} dias`} value={money(d.saldo_final)} tone={d.saldo_final < 0 ? 'bad' : undefined} />,
-          <Kpi key="3" label="Menor saldo projetado" value={money(d.menor_saldo.saldo)} detail={`em ${date(d.menor_saldo.periodo)}`} tone={d.menor_saldo.saldo < 0 ? 'bad' : undefined} />,
-          <Kpi key="4" label="Previsto de assinaturas" value={money(d.receita_prevista_contratos)} detail="Ainda não emitido no Asaas" />,
+          <Kpi key="1" label="Saldo hoje" help="caixa" value={money(d.saldo_inicial)} />,
+          <Kpi key="2" label={`Saldo em ${d.dias} dias`} help="saldo_projetado" value={money(d.saldo_final)} tone={d.saldo_final < 0 ? 'bad' : undefined} />,
+          <Kpi key="3" label="Menor saldo projetado" help="menor_saldo" value={money(d.menor_saldo.saldo)} detail={`em ${date(d.menor_saldo.periodo)}`} tone={d.menor_saldo.saldo < 0 ? 'bad' : undefined} />,
+          <Kpi key="4" label="Previsto de assinaturas" help="previsto_assinaturas" value={money(d.receita_prevista_contratos)} detail="Ainda não emitido no Asaas" />,
         ].map((k, i) => <div key={i} className="px-5 py-4">{k}</div>)}
       </div>
       <Panel title="Entradas, saídas e saldo projetado"><CashflowChart data={d.serie} height={320} /></Panel>

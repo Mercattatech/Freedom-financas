@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, Loader2, ChevronLeft, ChevronRight, CheckCircle2, Clock, AlertTriangle, MinusCircle, CircleDot } from 'lucide-react';
+import { X, Loader2, ChevronLeft, ChevronRight, CheckCircle2, Clock, AlertTriangle, MinusCircle, CircleDot, HelpCircle } from 'lucide-react';
 import { twMerge } from 'tailwind-merge';
 import { money, pct, monthLong, shiftYm } from '../format';
 
@@ -184,11 +185,248 @@ export function MarginRuler({ value, meta, width = 140 }) {
   );
 }
 
-export function Kpi({ label, value, detail, tone }) {
+export const METRIC_HELP = {
+  mrr: {
+    title: 'MRR — Receita Recorrente Mensal',
+    text: 'Quanto sua empresa fatura todo mês de forma previsível com contratos recorrentes ativos.',
+    formula: 'Soma do valor mensalizado dos contratos recorrentes ativos (anual ÷ 12, semestral ÷ 6, trimestral ÷ 3, mensal ÷ 1). ARR = MRR × 12.',
+  },
+  arr: {
+    title: 'ARR — Receita Recorrente Anual',
+    text: 'Projeção anual da sua receita recorrente mantendo a base atual de contratos ativos.',
+    formula: 'MRR × 12 meses.',
+  },
+  novo_mrr: {
+    title: 'Novo MRR no mês (Crescimento líquido)',
+    text: 'Mostra se sua receita recorrente cresceu ou encolheu no mês considerando novos contratos e cancelamentos (churn).',
+    formula: 'MRR de novos contratos ativos no mês − MRR perdido por contratos cancelados/encerrados (churn).',
+  },
+  caixa: {
+    title: 'Caixa hoje',
+    text: 'Dinheiro disponível hoje somando todas as contas bancárias e caixas cadastrados no Freedom Empresas.',
+    formula: 'Saldo inicial de cada conta + recebimentos baixados − pagamentos baixados.',
+  },
+  saldo_asaas: {
+    title: 'Saldo atual Asaas',
+    text: 'Valor disponível em tempo real diretamente na sua conta Asaas, pronto para saque ou pagamento de contas.',
+    formula: 'Consultado ao vivo pela API oficial do Asaas.',
+  },
+  receber_30d: {
+    title: 'A receber em 30 dias',
+    text: 'Previsão de entradas de caixa nos próximos 30 dias com base nas cobranças em aberto.',
+    formula: 'Soma do saldo em aberto das contas a receber com vencimento entre hoje e hoje + 30 dias.',
+  },
+  pagar_30d: {
+    title: 'A pagar em 30 dias',
+    text: 'Compromissos financeiros que vencem nos próximos 30 dias.',
+    formula: 'Soma do saldo em aberto das contas a pagar com vencimento entre hoje e hoje + 30 dias.',
+  },
+  inadimplencia: {
+    title: 'Em atraso / Inadimplência',
+    text: 'Total de contas a receber já vencidas e ainda não pagas, junto com o percentual de atraso recente.',
+    formula: 'Inadimplência (%) = (Total vencido a receber ÷ Total faturado nos últimos 90 dias) × 100.',
+  },
+  lucro_liquido: {
+    title: 'Lucro líquido do mês',
+    text: 'Resultado final da empresa no mês pelo regime de competência, depois de todos os impostos, custos e despesas.',
+    formula: 'Receita bruta − Impostos/deduções − Custos diretos − Despesas operacionais ± Resultado financeiro.',
+  },
+  receita_bruta: {
+    title: 'Receita bruta',
+    text: 'Soma de todo o faturamento lançado na competência do mês, antes de impostos, descontos ou custos.',
+    formula: 'Soma das contas a receber (não canceladas) com competência dentro do mês selecionado.',
+  },
+  margem_bruta: {
+    title: 'Margem bruta (%)',
+    text: 'Percentual que sobra da receita líquida depois de pagar os custos diretos da entrega (serviços, produtos, equipe direta).',
+    formula: '(Lucro bruto ÷ Receita líquida) × 100.',
+  },
+  margem_ebitda: {
+    title: 'Margem EBITDA (%)',
+    text: 'Mede a eficiência operacional do negócio (geração de caixa da operação antes de juros, impostos sobre o lucro e depreciação).',
+    formula: '(EBITDA ÷ Receita líquida) × 100.',
+  },
+  margem_liquida: {
+    title: 'Margem líquida (%)',
+    text: 'Quanto sobra de lucro final a cada R$ 100 faturados após pagar absolutamente tudo.',
+    formula: '(Lucro líquido ÷ Receita líquida) × 100.',
+  },
+  margem_contribuicao: {
+    title: 'Margem de contribuição',
+    text: 'Quanto os contratos deixam para pagar a estrutura fixa da empresa (overhead) e gerar lucro.',
+    formula: 'Receita − Impostos − Comissão − Custos diretos − Produtos − Tarifas Asaas − (Horas da equipe × custo/hora).',
+  },
+  margem_prevista: {
+    title: 'Margem prevista (%)',
+    text: 'Margem estimada do contrato com base no valor mensal e no custo direto previsto.',
+    formula: '((Valor mensal − Custo direto previsto/mês) ÷ Valor mensal) × 100.',
+  },
+  overhead: {
+    title: 'Overhead (estrutura fixa)',
+    text: 'Despesas da empresa que não pertencem a um contrato específico (aluguel, administrativo, ferramentas gerais).',
+    formula: 'Despesas sem vínculo a contrato (descontando custos já alocados) rateadas entre os contratos por receita ou horas.',
+  },
+  ponto_equilibrio: {
+    title: 'Ponto de equilíbrio',
+    text: 'Faturamento mínimo mensal necessário para cobrir todos os custos fixos e empatar no zero a zero (sem prejuízo).',
+    formula: 'Despesas fixas mensais ÷ (Índice de margem de contribuição ÷ 100).',
+  },
+  ltv: {
+    title: 'LTV — Lifetime Value (Valor no ciclo de vida)',
+    text: 'Quanto dinheiro um cliente já trouxe para a sua empresa durante todo o tempo em que é cliente.',
+    formula: 'Soma de todos os pagamentos confirmados (receitas pagas) desse cliente desde o início.',
+  },
+  ltv_medio: {
+    title: 'LTV médio da empresa',
+    text: 'Valor médio total que cada cliente gera para a empresa ao longo do relacionamento.',
+    formula: 'Soma do LTV de todos os clientes pagantes ÷ Quantidade de clientes pagantes.',
+  },
+  tempo_casa: {
+    title: 'Tempo de casa',
+    text: 'Há quantos meses o cliente mantém relacionamento com a sua empresa.',
+    formula: 'Diferença em meses entre a data mais antiga (1º contrato ou 1º pagamento) e a data de hoje.',
+  },
+  pontualidade: {
+    title: 'Pontualidade (%)',
+    text: 'Mede o quanto o cliente paga as cobranças em dia, sem atraso.',
+    formula: '(Títulos pagos até o vencimento ÷ (Total pagos + Vencidos em aberto)) × 100.',
+  },
+  ticket_medio: {
+    title: 'Ticket médio mensal',
+    text: 'Valor médio pago por mês em cada contrato recorrente ativo.',
+    formula: 'MRR ÷ Quantidade de contratos recorrentes ativos.',
+  },
+  contratos_ativos: {
+    title: 'Contratos ativos',
+    text: 'Total de contratos em vigência gerando faturamento ou entregas neste momento.',
+    formula: 'Contagem de contratos com status ATIVO.',
+  },
+  receita_recorrente_mix: {
+    title: 'Receita recorrente (%)',
+    text: 'Parcela do faturamento do período que vem de assinaturas/mensalidades frente a projetos pontuais.',
+    formula: '(Receita recorrente ÷ Receita total do período) × 100.',
+  },
+  horas_contratos: {
+    title: 'Horas em contratos',
+    text: 'Total de horas apontadas pela equipe em contratos no período e quanto cada hora rendeu em faturamento.',
+    formula: 'Soma das horas apontadas · Receita/hora = Receita dos contratos ÷ Total de horas.',
+  },
+  saldo_projetado: {
+    title: 'Saldo projetado',
+    text: 'Quanto você terá em caixa ao final do período se todas as contas a receber e a pagar forem liquidadas nas datas previstas.',
+    formula: 'Saldo hoje + Entradas previstas − Saídas previstas no horizonte selecionado.',
+  },
+  menor_saldo: {
+    title: 'Menor saldo projetado',
+    text: 'Ponto mais baixo que o caixa atinge no período — alerta se haverá necessidade de capital de giro.',
+    formula: 'Menor valor diário/semanal do saldo acumulado na projeção de fluxo de caixa.',
+  },
+  previsto_assinaturas: {
+    title: 'Previsto de assinaturas',
+    text: 'Receitas futuras esperadas de contratos recorrentes ativos cujas cobranças ainda não foram emitidas.',
+    formula: 'Projeção dos próximos ciclos de contratos recorrentes ativos dentro do horizonte.',
+  },
+};
+
+export function InfoTip({ help, title, text, formula, dark = false, className }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const popRef = useRef(null);
+
+  const info = typeof help === 'string' ? METRIC_HELP[help] : help;
+  const finalTitle = title || info?.title;
+  const finalText = text || info?.text;
+  const finalFormula = formula || info?.formula;
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePos = () => {
+      const rect = btnRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = Math.min(300, window.innerWidth - 24);
+      let left = rect.left + rect.width / 2 - width / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+      const preferAbove = rect.top > 180;
+      const top = preferAbove ? rect.top - 8 : rect.bottom + 8;
+      setPos({ left, top, width, above: preferAbove });
+    };
+    updatePos();
+    const onDocClick = (e) => {
+      if (btnRef.current?.contains(e.target) || popRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  if (!finalText && !finalFormula) return null;
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        aria-label={finalTitle ? `Explicação: ${finalTitle}` : 'Ver explicação do indicador'}
+        className={cx(
+          'inline-flex items-center justify-center rounded-full p-0.5 align-middle transition biz-noprint',
+          dark ? 'text-white/55 hover:text-white' : 'text-[var(--muted)] hover:text-[var(--result)]',
+          className,
+        )}
+      >
+        <HelpCircle className="w-3.5 h-3.5" />
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={popRef}
+          role="tooltip"
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          style={{
+            position: 'fixed',
+            left: pos.left,
+            top: pos.top,
+            width: pos.width,
+            transform: pos.above ? 'translateY(-100%)' : 'none',
+            zIndex: 9999,
+          }}
+          className="rounded-xl border border-slate-700/80 bg-slate-900 text-slate-100 p-3.5 shadow-2xl text-left pointer-events-auto"
+        >
+          {finalTitle && <p className="text-xs font-bold text-white mb-1">{finalTitle}</p>}
+          {finalText && <p className="text-[12px] text-slate-300 leading-relaxed">{finalText}</p>}
+          {finalFormula && (
+            <div className="mt-2 pt-2 border-t border-slate-700/80">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-0.5">Como é calculado</span>
+              <p className="text-[11px] text-slate-200 leading-relaxed">{finalFormula}</p>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+export function Kpi({ label, value, detail, tone, help }) {
   const t = tone === 'bad' ? 'text-[var(--bad)]' : tone === 'in' ? 'text-[var(--in)]' : tone === 'out' ? 'text-[var(--out)]' : '';
   return (
     <div className="py-1">
-      <p className="text-[13px] font-semibold text-[var(--muted)]">{label}</p>
+      <p className="text-[13px] font-semibold text-[var(--muted)] inline-flex items-center gap-1">
+        <span>{label}</span>
+        {help && <InfoTip help={help} />}
+      </p>
       <p className={cx('num text-[22px] font-extrabold mt-0.5 leading-tight', t)}>{value}</p>
       {detail && <p className="text-xs text-[var(--muted)] mt-0.5">{detail}</p>}
     </div>
