@@ -97,23 +97,37 @@ export default function PublicProposal() {
 
           {p.condicoes && <Section title="Condições"><div className={md}><ReactMarkdown>{p.condicoes}</ReactMarkdown></div></Section>}
 
-          <Section title={p.status === 'ACEITA' ? 'Proposta aceita' : 'Próximo passo'}>
+          <Section title={p.status === 'ACEITA' ? 'Proposta assinada e aceita' : 'Assinatura eletrônica e aceite'}>
             {p.status === 'ACEITA' ? (
-              <div className="flex gap-3 items-start"><CheckCircle2 className="w-7 h-7 shrink-0" style={{ color: brand }} /><div><p className="font-bold text-lg">Obrigado, {p.aceite_nome}!</p><p className="text-[var(--muted)]">Aceite registrado em {date(p.respondida_em)}. Nossa equipe vai entrar em contato para iniciar o trabalho.</p></div></div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 flex flex-wrap gap-4 items-start justify-between">
+                <div className="flex gap-3 items-start">
+                  <CheckCircle2 className="w-7 h-7 shrink-0" style={{ color: brand }} />
+                  <div>
+                    <p className="font-bold text-lg text-[var(--ink)]">Proposta aceita e assinada por {p.aceite_nome}</p>
+                    <p className="text-sm text-[var(--muted)] mt-0.5">
+                      {p.aceite_documento ? `CPF/CNPJ: ${p.aceite_documento} · ` : ''}Registrado em {date(p.respondida_em)}
+                    </p>
+                    <p className="text-xs text-[var(--muted)] mt-1">Nossa equipe foi notificada e entrará em contato para dar início ao trabalho.</p>
+                  </div>
+                </div>
+                <button onClick={() => window.print()} className="biz-noprint inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[var(--line)] bg-white text-xs font-semibold text-[var(--ink)] hover:bg-slate-50">
+                  <Printer className="w-3.5 h-3.5" /> Baixar comprovante PDF
+                </button>
+              </div>
             ) : p.status === 'RECUSADA' ? (
               <p className="text-[var(--muted)]">Esta proposta foi recusada. Se mudar de ideia, fale com {p.empresa.nome}.</p>
             ) : p.status === 'EXPIRADA' ? (
               <p className="text-[var(--muted)]">Esta proposta expirou. Peça uma versão atualizada para {p.empresa.nome}.</p>
             ) : aberta && !rejecting ? (
               <div className="biz-noprint">
-                <p className="text-[var(--ink-2)] mb-4">Para aceitar, informe seu nome e CPF ou CNPJ. O aceite fica registrado com data e hora.</p>
+                <p className="text-[var(--ink-2)] mb-4">Para assinar e dar o aceite formal nesta proposta, preencha seu nome completo e CPF ou CNPJ. O aceite eletrônico fica registrado com data, hora e IP.</p>
                 <div className="grid sm:grid-cols-2 gap-3">
-                  <input className="h-11 rounded-lg border border-[var(--line)] px-3" placeholder="Nome completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                  <input className="h-11 rounded-lg border border-[var(--line)] px-3" placeholder="Nome completo do signatário" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                   <input className="h-11 rounded-lg border border-[var(--line)] px-3" placeholder="CPF ou CNPJ" value={form.documento} onChange={(e) => setForm({ ...form, documento: docMask(e.target.value) })} />
                 </div>
-                <label className="flex items-start gap-2 text-sm mt-3"><input type="checkbox" className="mt-1" checked={form.ok} onChange={(e) => setForm({ ...form, ok: e.target.checked })} />Li e concordo com o escopo, os valores e as condições desta proposta.</label>
+                <label className="flex items-start gap-2 text-sm mt-3"><input type="checkbox" className="mt-1" checked={form.ok} onChange={(e) => setForm({ ...form, ok: e.target.checked })} />Declaro que li e concordo integralmente com o escopo, os valores e as condições desta proposta comercial.</label>
                 <div className="flex flex-wrap gap-3 mt-5 items-center">
-                  <button disabled={!form.nome || !form.ok || sending} onClick={accept} className="h-12 px-6 rounded-lg text-white font-bold disabled:opacity-40" style={{ background: brand }}>{sending ? 'Registrando…' : 'Aceitar proposta'}</button>
+                  <button disabled={!form.nome || !form.ok || sending} onClick={accept} className="h-12 px-6 rounded-lg text-white font-bold disabled:opacity-40" style={{ background: brand }}>{sending ? 'Registrando assinatura…' : 'Assinar e aceitar proposta'}</button>
                   <button onClick={() => setRejecting(true)} className="text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)]">Não vou seguir agora</button>
                 </div>
               </div>

@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, FileSignature, Eye, Copy, Send, Trash2, Repeat, ExternalLink, MessageCircle, GripVertical, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Plus, FileSignature, Eye, Copy, Send, Trash2, Repeat, ExternalLink, MessageCircle, GripVertical, X, Sparkles, Mic, Square, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -20,7 +20,12 @@ export function ProposalList() {
   return (
     <>
       <PageHeader title="Propostas" subtitle="Monte propostas com a marca da empresa, compartilhe por link e veja quando o cliente abriu."
-        actions={can('comercial:write') && <Button icon={Plus} onClick={() => nav('/empresas/propostas/nova')}>Nova proposta</Button>} />
+        actions={can('comercial:write') && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" icon={Sparkles} onClick={() => nav('/empresas/propostas/nova?ia=1')}>Criar com IA (Áudio / Texto)</Button>
+            <Button icon={Plus} onClick={() => nav('/empresas/propostas/nova')}>Nova proposta</Button>
+          </div>
+        )} />
       {r && (
         <div className="flex flex-wrap gap-x-8 gap-y-2 mb-4 text-sm">
           <span>Em negociação: <b>{r.abertas}</b></span>
@@ -66,6 +71,7 @@ const emptyItem = () => ({ key: Math.random().toString(36).slice(2), product_id:
 
 export function ProposalEditor() {
   const { id } = useParams();
+  const [sp] = useSearchParams();
   const isNew = id === 'nova';
   const nav = useNavigate();
   const { can, company } = useBiz();
@@ -73,6 +79,8 @@ export function ProposalEditor() {
   const q = useBizQuery(`/proposals/${id}`, null, { enabled: !isNew });
   const [f, setF] = useState(null);
   const [mode, setMode] = useState('cliente');
+  const [showAi, setShowAi] = useState(() => sp.get('ia') === '1');
+  const [lastTranscript, setLastTranscript] = useState('');
 
   useEffect(() => {
     if (isNew && !f) setF({ titulo: '', client_id: '', prospect_nome: '', prospect_empresa: '', prospect_email: '', introducao: '', escopo: '', condicoes: company?.proposta_termos || '', validade: '', desconto_percent: 0, prazo_contrato_meses: 12, responsavel: '', items: [emptyItem()] });
@@ -143,10 +151,57 @@ export function ProposalEditor() {
 
   return (
     <>
-      <PageHeader title={isNew ? 'Nova proposta' : `Proposta #${p.numero}`} subtitle={isNew ? 'Escolha o cliente, adicione os itens do catálogo e envie o link.' : undefined}
-        actions={<Link to="/empresas/propostas" className="text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)]">Voltar para propostas</Link>}>
+      <PageHeader title={isNew ? 'Nova proposta' : `Proposta #${p.numero}`} subtitle={isNew ? 'Grave um áudio ou cole o texto da reunião para a IA redigir a proposta, ou preencha manualmente.' : undefined}
+        actions={
+          <div className="flex items-center gap-3">
+            {editable && (
+              <Button size="sm" variant={showAi ? 'primary' : 'secondary'} icon={Sparkles} onClick={() => setShowAi((v) => !v)}>
+                {showAi ? 'Ocultar IA' : 'Gerar com IA (Áudio / Texto)'}
+              </Button>
+            )}
+            <Link to="/empresas/propostas" className="text-sm font-semibold text-[var(--muted)] hover:text-[var(--ink)]">Voltar para propostas</Link>
+          </div>
+        }>
         {p && <div className="flex items-center gap-3 mt-2"><StatusPill status={p.status_efetivo} />{p.visualizacoes > 0 && <span className="text-sm text-[var(--muted)]">Aberta {p.visualizacoes}x, última em {date(p.ultima_visualizacao)}</span>}{p.aceite_nome && <span className="text-sm text-[var(--in)] font-semibold">Aceita por {p.aceite_nome} em {date(p.respondida_em)}</span>}{p.motivo_recusa && <span className="text-sm text-[var(--bad)]">Motivo: {p.motivo_recusa}</span>}</div>}
       </PageHeader>
+
+      {editable && showAi && (
+        <ProposalAiPanel
+          clientId={mode === 'cliente' ? f.client_id : ''}
+          onGenerated={({ transcricao, proposta }) => {
+            if (transcricao) setLastTranscript(transcricao);
+            const hasClient = !!proposta.client_id;
+            setMode(hasClient ? 'cliente' : (proposta.prospect_nome || proposta.prospect_empresa ? 'prospect' : mode));
+            setF((prev) => ({
+              ...prev,
+              titulo: proposta.titulo || prev.titulo,
+              client_id: hasClient ? proposta.client_id : (mode === 'cliente' ? prev.client_id : ''),
+              prospect_empresa: hasClient ? '' : (proposta.prospect_empresa || prev.prospect_empresa || ''),
+              prospect_nome: hasClient ? '' : (proposta.prospect_nome || prev.prospect_nome || ''),
+              prospect_email: hasClient ? '' : (proposta.prospect_email || prev.prospect_email || ''),
+              introducao: proposta.introducao || prev.introducao,
+              escopo: proposta.escopo || prev.escopo,
+              condicoes: proposta.condicoes || prev.condicoes,
+              prazo_contrato_meses: proposta.prazo_contrato_meses ?? prev.prazo_contrato_meses,
+              desconto_percent: proposta.desconto_percent ?? prev.desconto_percent,
+              items: proposta.items?.length
+                ? proposta.items.map((it) => ({ ...it, key: Math.random().toString(36).slice(2) }))
+                : prev.items,
+            }));
+            setShowAi(false);
+            toast.success('Proposta formal gerada pela IA! Revise os dados e clique em Salvar para gerar o link de assinatura.');
+          }}
+        />
+      )}
+
+      {lastTranscript && (
+        <details className="mb-5 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-semibold text-[var(--ink-2)] flex items-center gap-2">
+            <Mic className="w-4 h-4 text-[var(--result)]" /> Ver transcrição do áudio da reunião
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap text-xs text-[var(--muted)] leading-relaxed">{lastTranscript}</p>
+        </details>
+      )}
 
       <div className="grid xl:grid-cols-[1fr_340px] gap-5 items-start">
         <div className="space-y-5">
@@ -252,5 +307,207 @@ export function ProposalEditor() {
         </aside>
       </div>
     </>
+  );
+}
+
+function fmtSecs(sec) {
+  const m = String(Math.floor(sec / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function ProposalAiPanel({ clientId, onGenerated }) {
+  const [aba, setAba] = useState('audio');
+  const [texto, setTexto] = useState('');
+  const [instrucoes, setInstrucoes] = useState('');
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioName, setAudioName] = useState('');
+  const [audioUrl, setAudioUrl] = useState('');
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const timerRef = useRef(null);
+
+  useEffect(() => () => {
+    clearInterval(timerRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
+
+  const setNewAudio = (blob, name) => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioBlob(blob);
+    setAudioName(name);
+    setAudioUrl(blob ? URL.createObjectURL(blob) : '');
+  };
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        toast.error('Seu navegador não suporta gravação de áudio. Envie um arquivo de áudio ou cole o texto.');
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data?.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const finalMime = rec.mimeType || mime || 'audio/webm';
+        const ext = finalMime.includes('mp4') ? 'm4a' : finalMime.includes('ogg') ? 'ogg' : 'webm';
+        const blob = new Blob(chunksRef.current, { type: finalMime });
+        setNewAudio(blob, `reuniao-${Date.now()}.${ext}`);
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      };
+      rec.start();
+      recorderRef.current = rec;
+      setSeconds(0);
+      setRecording(true);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch (err) {
+      toast.error(err?.name === 'NotAllowedError' ? 'Permissão de microfone negada no navegador.' : `Não foi possível iniciar a gravação: ${err.message}`);
+    }
+  };
+
+  const stopRecording = () => {
+    clearInterval(timerRef.current);
+    setRecording(false);
+    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
+      recorderRef.current.stop();
+    }
+  };
+
+  const handleAudioFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('O arquivo de áudio deve ter no máximo 20 MB.');
+      return;
+    }
+    setNewAudio(file, file.name);
+  };
+
+  const handleTextFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const content = await file.text();
+    setTexto((prev) => (prev ? `${prev}\n\n${content}` : content));
+    toast.success(`Texto carregado de ${file.name}`);
+  };
+
+  const gen = useBizMutation(async () => {
+    const fd = new FormData();
+    if (audioBlob) fd.append('audio', audioBlob, audioName || 'reuniao.webm');
+    if (texto.trim()) fd.append('texto', texto.trim());
+    if (instrucoes.trim()) fd.append('instrucoes_extras', instrucoes.trim());
+    if (clientId) fd.append('client_id', clientId);
+    return biz('/proposals/generate-ai', { method: 'POST', body: fd });
+  }, {
+    onSuccess: (res) => onGenerated(res),
+  });
+
+  const canGenerate = !recording && (!!audioBlob || texto.trim().length >= 10);
+
+  return (
+    <section className="mb-6 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-50/70 via-[var(--surface)] to-emerald-50/40 dark:from-indigo-950/30 dark:via-[var(--surface)] dark:to-emerald-950/20 p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-[var(--ink)]">Assistente de IA — Gerar Proposta Formal</h2>
+            <p className="text-xs text-[var(--muted)]">Grave o resumo da reunião, envie um áudio ou suba o texto. A IA redige a proposta formal pronta para envio e assinatura do cliente.</p>
+          </div>
+        </div>
+        <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">
+          <button type="button" onClick={() => setAba('audio')} className={cx('inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold transition', aba === 'audio' ? 'bg-indigo-600 text-white' : 'text-[var(--ink-2)] hover:text-[var(--ink)]')}>
+            <Mic className="w-3.5 h-3.5" /> Áudio da reunião {audioBlob ? '✓' : ''}
+          </button>
+          <button type="button" onClick={() => setAba('texto')} className={cx('inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold transition', aba === 'texto' ? 'bg-indigo-600 text-white' : 'text-[var(--ink-2)] hover:text-[var(--ink)]')}>
+            <FileText className="w-3.5 h-3.5" /> Texto / Ata {texto.trim() ? '✓' : ''}
+          </button>
+        </div>
+      </div>
+
+      {aba === 'audio' ? (
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {!recording ? (
+              <Button type="button" variant="primary" icon={Mic} onClick={startRecording} className="bg-rose-600 hover:bg-rose-700 text-white">
+                {audioBlob ? 'Gravar novo áudio' : 'Gravar áudio da reunião'}
+              </Button>
+            ) : (
+              <Button type="button" variant="danger" icon={Square} onClick={stopRecording}>
+                Parar gravação ({fmtSecs(seconds)})
+              </Button>
+            )}
+
+            {!recording && (
+              <label className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg border border-[var(--line)] bg-[var(--paper)] text-xs font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer transition">
+                <Upload className="w-3.5 h-3.5" />
+                Enviar arquivo de áudio (.mp3, .m4a, .wav, .ogg)
+                <input type="file" accept="audio/*" onChange={handleAudioFile} className="hidden" />
+              </label>
+            )}
+
+            {recording && (
+              <span className="inline-flex items-center gap-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse" />
+                Gravando… fale o cliente, escopo, serviços, valores e condições combinados.
+              </span>
+            )}
+          </div>
+
+          {audioUrl && !recording && (
+            <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-[var(--line-2)]">
+              <audio controls src={audioUrl} className="h-9 max-w-full flex-1 min-w-[220px]" />
+              <span className="text-xs text-[var(--muted)] truncate max-w-[180px]">{audioName}</span>
+              <button type="button" onClick={() => setNewAudio(null, '')} className="text-xs font-semibold text-[var(--bad)] hover:underline">Remover áudio</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-[var(--ink-2)]">Cole a transcrição ou anotações da reunião</span>
+            <label className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border border-[var(--line)] bg-[var(--paper)] text-xs font-semibold text-[var(--ink-2)] hover:text-[var(--ink)] cursor-pointer transition">
+              <Upload className="w-3.5 h-3.5" /> Subir arquivo (.txt / .md)
+              <input type="file" accept=".txt,.md,text/plain,text/markdown" onChange={handleTextFile} className="hidden" />
+            </label>
+          </div>
+          <Textarea
+            rows={5}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Ex.: Reunião com João da Empresa Alfa (joao@alfa.com.br). Precisam de gestão de tráfego pago (R$ 2.500/mês) + criação de landing page (R$ 3.000 único). Contrato de 12 meses, pagamento dia 10 via PIX/Boleto, reajuste anual IPCA..."
+          />
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+        <div className="flex-1">
+          <Field label="Instruções extras (opcional)">
+            <Input value={instrucoes} onChange={(e) => setInstrucoes(e.target.value)} placeholder="Ex.: Tom mais consultivo, destacar garantia de 30 dias, 10% de desconto à vista…" />
+          </Field>
+        </div>
+        <Button
+          type="button"
+          size="lg"
+          icon={Sparkles}
+          loading={gen.isPending}
+          disabled={!canGenerate}
+          onClick={() => gen.mutate()}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
+        >
+          {gen.isPending ? 'Gerando proposta formal…' : 'Gerar proposta com IA'}
+        </Button>
+      </div>
+    </section>
   );
 }

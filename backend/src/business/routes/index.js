@@ -1,5 +1,6 @@
 // Router do módulo Freedom Empresas — montado em /api/biz
 const express = require('express');
+const multer = require('multer');
 const { ah, HttpError } = require('../lib/errors');
 const { serialize } = require('../lib/money');
 const { requireUser, requireCompany, requirePerm } = require('../middleware/tenant');
@@ -12,6 +13,8 @@ const products = require('../services/products');
 const transactions = require('../services/transactions');
 const contracts = require('../services/contracts');
 const proposals = require('../services/proposals');
+const proposalAi = require('../services/proposalAi');
+const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const team = require('../services/team');
 const reports = require('../services/reports');
 const apiKeys = require('../services/apiKeys');
@@ -253,6 +256,14 @@ function createBizRouter() {
   // Propostas
   const comWrite = requirePerm('comercial:write');
   r.get('/proposals', ah(async (req, res) => res.json(await proposals.list(req.ctx, req.query))));
+  r.post('/proposals/generate-ai', comWrite, uploadMem.single('audio'), ah(async (req, res) => {
+    res.json(await proposalAi.generateFromInput(req.ctx, {
+      texto: req.body?.texto,
+      instrucoes_extras: req.body?.instrucoes_extras,
+      client_id: req.body?.client_id,
+      audioFile: req.file || null,
+    }));
+  }));
   r.get('/proposals/:id', ah(async (req, res) => res.json({ ...(await proposals.get(req.ctx, req.params.id)), base_url: baseUrl(req) })));
   r.post('/proposals', comWrite, ah(async (req, res) => res.status(201).json(await proposals.create(req.ctx, req.body || {}))));
   r.put('/proposals/:id', comWrite, ah(async (req, res) => res.json(await proposals.update(req.ctx, req.params.id, req.body || {}))));

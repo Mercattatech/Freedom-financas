@@ -11,14 +11,15 @@ export async function biz(path, { method = 'GET', body, query, auth = true } = {
   const token = localStorage.getItem('freedom_access_token');
   const companyId = companyStore.get();
   const qs = query ? `?${new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== '')))}` : '';
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const res = await fetch(`${API_URL}/biz${path}${qs}`, {
     method,
     headers: {
-      'Content-Type': 'application/json',
+      ...(!isForm && { 'Content-Type': 'application/json' }),
       ...(auth && token && { Authorization: `Bearer ${token}` }),
       ...(auth && companyId && { 'x-company-id': companyId }),
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? (isForm ? body : JSON.stringify(body)) : undefined,
   });
   let data = null;
   try { data = await res.json(); } catch { /* sem corpo */ }
