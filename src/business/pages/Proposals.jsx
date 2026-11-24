@@ -626,7 +626,10 @@ function ProposalAiPanel({ initialTab = 'reuniao', clientId, onGenerated }) {
           </div>
           <div>
             <h2 className="text-base font-bold text-[var(--ink)]">Assistente de IA — Gerar Proposta Formal</h2>
-            <p className="text-xs text-[var(--muted)]">Ouça sua reunião ao vivo (Meet/Zoom), grave um áudio ou envie a ata. A IA redige a proposta pronta para assinatura.</p>
+            <p className="text-xs text-[var(--muted)]">
+              Ouça sua reunião ao vivo (Meet/Zoom), grave um áudio ou envie a ata. A IA redige a proposta pronta para assinatura.{' '}
+              <Link to="/empresas/configuracoes?aba=ia" className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline">Configurar chave OpenAI</Link>
+            </p>
           </div>
         </div>
         <div className="inline-flex flex-wrap rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">

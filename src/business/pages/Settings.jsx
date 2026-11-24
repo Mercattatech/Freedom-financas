@@ -404,6 +404,72 @@ function NfseTab() {
   );
 }
 
+function OpenAIKeyPanel() {
+  const st = useBizQuery('/company/openai/status');
+  const [apiKey, setApiKey] = useState('');
+  const save = useBizMutation((body) => biz('/company/openai', { method: 'PUT', body }), {
+    onSuccess: (r) => {
+      setApiKey('');
+      if (r.conexao?.ok) {
+        toast.success(r.configurado_empresa ? 'Chave OpenAI da empresa conectada e validada!' : 'Chave OpenAI da empresa removida.');
+      } else {
+        toast.error(r.conexao?.erro || 'Chave salva, mas a validação na OpenAI falhou.');
+      }
+      st.refetch();
+    },
+  });
+  const s = st.data || {};
+  return (
+    <Panel title="Chave da OpenAI (IA de Propostas e Transcrição de Reuniões)">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {st.isLoading ? (
+            <span className="text-[var(--muted)]">Verificando configuração…</span>
+          ) : s.configurado_empresa ? (
+            <>
+              <CheckCircle2 className="w-5 h-5 text-[var(--in)] shrink-0" />
+              <span>Chave própria da empresa configurada (<code className="text-xs font-mono bg-[var(--paper)] px-1.5 py-0.5 rounded">{s.chave_mascarada}</code>).</span>
+            </>
+          ) : s.configurado_global ? (
+            <>
+              <CheckCircle2 className="w-5 h-5 text-sky-600 shrink-0" />
+              <span>Usando a chave padrão da plataforma. Você pode cadastrar a chave própria desta empresa abaixo se preferir.</span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+              <span>Nenhuma chave OpenAI configurada. Cadastre abaixo para habilitar a IA de Propostas (áudio, reunião ao vivo e texto).</span>
+            </>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+          <div className="flex-1">
+            <Field label="OpenAI API Key da empresa" hint="Gerada em platform.openai.com/api-keys. Guardamos criptografada (AES-256).">
+              <Input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={s.configurado_empresa ? 'Cole uma nova chave sk-... para substituir' : 'sk-...'}
+                autoComplete="off"
+              />
+            </Field>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button loading={save.isPending} disabled={!apiKey.trim()} onClick={() => save.mutate({ api_key: apiKey.trim() })}>
+              Salvar e testar
+            </Button>
+            {s.configurado_empresa && (
+              <Button variant="danger" disabled={save.isPending} onClick={() => window.confirm('Remover a chave OpenAI desta empresa?') && save.mutate({ api_key: null })}>
+                Remover
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function McpTab() {
   const keys = useBizQuery('/api-keys');
   const [novo, setNovo] = useState(null);
@@ -433,6 +499,8 @@ function McpTab() {
 
   return (
     <div className="space-y-6">
+      <OpenAIKeyPanel />
+
       {/* Banner de Destaque e Monetização do Módulo de IA */}
       <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 text-white p-6 shadow-md relative overflow-hidden">
         <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">

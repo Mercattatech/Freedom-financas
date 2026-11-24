@@ -40,6 +40,7 @@ async function ensureDbColumns() {
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
       ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
+      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "openai_api_key" TEXT;
 
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
       ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;
@@ -292,6 +293,14 @@ function createBizRouter() {
   r.get('/reports/cashflow', rep, ah(async (req, res) => res.json(await reports.cashflow(req.ctx, { ...req.query, incluir_vencidos: req.query.incluir_vencidos === 'true' }))));
   r.get('/reports/aging', rep, ah(async (req, res) => res.json(await reports.aging(req.ctx, req.query))));
   r.get('/reports/balances', rep, ah(async (req, res) => res.json(await reports.bankBalances(req.ctx))));
+
+  // Chave OpenAI própria da empresa (usada na IA de Propostas, transcrição de reuniões, etc.)
+  r.get('/company/openai/status', requirePerm('config:write'), ah(async (req, res) => {
+    res.json(await proposalAi.getOpenAIStatus(req.ctx));
+  }));
+  r.put('/company/openai', requirePerm('config:write'), ah(async (req, res) => {
+    res.json(await proposalAi.setCompanyOpenAIKey(req.ctx, req.body?.api_key));
+  }));
 
   // Chaves de API (MCP) e auditoria
   r.get('/api-keys', requirePerm('config:write'), ah(async (req, res) => res.json(await apiKeys.list(req.ctx))));

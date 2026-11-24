@@ -2,14 +2,61 @@
 const { OpenAI, toFile } = require('openai');
 const prisma = require('../db');
 const configService = require('../../services/configService');
+const { encrypt, decrypt, mask } = require('../lib/crypto');
 const { badRequest, HttpError } = require('../lib/errors');
 const { num, round2 } = require('../lib/money');
 const { audit } = require('../lib/audit');
 
-async function getOpenAIClient() {
-  const apiKey = await configService.get('OPENAI_API_KEY');
+async function getCompanyRawOpenAIKey(companyId) {
+  if (!companyId) return null;
+  try {
+    const rows = await prisma.$queryRawUnsafe(`SELECT "openai_api_key" FROM "biz_company" WHERE "id" = $1 LIMIT 1`, companyId);
+    const enc = rows?.[0]?.openai_api_key;
+    return enc ? decrypt(enc) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getOpenAIStatus(ctx) {
+  const companyKey = await getCompanyRawOpenAIKey(ctx.companyId);
+  const globalKey = await configService.get('OPENAI_API_KEY');
+  return {
+    configurado_empresa: !!companyKey,
+    configurado_global: !!globalKey,
+    configurado: !!(companyKey || globalKey),
+    chave_mascarada: companyKey ? mask(companyKey) : null,
+  };
+}
+
+async function setCompanyOpenAIKey(ctx, apiKey) {
+  if (apiKey === null || apiKey === '') {
+    await prisma.$executeRawUnsafe(`UPDATE "biz_company" SET "openai_api_key" = NULL WHERE "id" = $1`, ctx.companyId);
+    await audit(ctx, 'update', 'empresa', ctx.companyId, 'Chave OpenAI da empresa removida');
+    return { ...(await getOpenAIStatus(ctx)), conexao: { ok: true } };
+  }
+  const clean = String(apiKey || '').trim();
+  if (!clean.startsWith('sk-')) throw badRequest('A chave da OpenAI deve começar com "sk-".');
+
+  let conexao = { ok: false, erro: null };
+  try {
+    const testClient = new OpenAI({ apiKey: clean });
+    await testClient.models.retrieve('gpt-4o-mini');
+    conexao = { ok: true };
+  } catch (e) {
+    conexao = { ok: false, erro: e.message || 'Falha ao validar chave na OpenAI' };
+  }
+
+  await prisma.$executeRawUnsafe(`UPDATE "biz_company" SET "openai_api_key" = $1 WHERE "id" = $2`, encrypt(clean), ctx.companyId);
+  await audit(ctx, 'update', 'empresa', ctx.companyId, 'Chave OpenAI da empresa configurada');
+  return { ...(await getOpenAIStatus(ctx)), conexao };
+}
+
+async function getOpenAIClient(companyId) {
+  const companyKey = await getCompanyRawOpenAIKey(companyId);
+  const apiKey = companyKey || await configService.get('OPENAI_API_KEY');
   if (!apiKey) {
-    throw new HttpError(400, 'Chave da OpenAI (OPENAI_API_KEY) não configurada. Configure em Admin › WhatsApp & IA.');
+    throw new HttpError(400, 'Chave da OpenAI não configurada. Cadastre sua chave em Configurações › Controle por IA.');
   }
   return new OpenAI({ apiKey });
 }
@@ -34,7 +81,7 @@ async function generateFromInput(ctx, { texto, audioFile, instrucoes_extras, cli
     throw badRequest('Grave um áudio, envie um arquivo de áudio ou cole/envie o texto da reunião.');
   }
 
-  const openai = await getOpenAIClient();
+  const openai = await getOpenAIClient(ctx.companyId);
 
   let transcricao = '';
   if (audioFile?.buffer?.length) {
@@ -191,9 +238,9 @@ async function transcribeAudioChunk(ctx, audioFile) {
   if (!audioFile?.buffer?.length) {
     throw badRequest('Nenhum áudio enviado para transcrição.');
   }
-  const openai = await getOpenAIClient();
+  const openai = await getOpenAIClient(ctx.companyId);
   const text = await transcribeBuffer(openai, audioFile.buffer, audioFile.originalname, audioFile.mimetype);
   return { text };
 }
 
-module.exports = { generateFromInput, transcribeAudioChunk };
+module.exports = { generateFromInput, transcribeAudioChunk, getOpenAIStatus, setCompanyOpenAIKey };
