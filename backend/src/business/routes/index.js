@@ -34,23 +34,25 @@ let dbSynced = false;
 async function ensureDbColumns() {
   if (dbSynced) return;
   try {
-    await prisma.$executeRawUnsafe(`
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_code" TEXT;
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_name" TEXT;
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_descricao_padrao" TEXT;
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false;
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false;
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3);
-      ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "openai_api_key" TEXT;
-
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_status" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_pdf_url" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_xml_url" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_rps_numero" TEXT;
-      ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_erro" TEXT;
-    `);
+    const alters = [
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_code" TEXT`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "municipal_service_name" TEXT`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_descricao_padrao" TEXT`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_emitir_ao_receber" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_reter_iss" BOOLEAN NOT NULL DEFAULT false`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "nfse_aliquota_iss" DECIMAL(6,3)`,
+      `ALTER TABLE "biz_company" ADD COLUMN IF NOT EXISTS "openai_api_key" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "asaas_invoice_id" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_numero" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_status" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_pdf_url" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_xml_url" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_rps_numero" TEXT`,
+      `ALTER TABLE "biz_transaction" ADD COLUMN IF NOT EXISTS "nfse_erro" TEXT`,
+    ];
+    for (const sql of alters) {
+      await prisma.$executeRawUnsafe(sql);
+    }
     dbSynced = true;
   } catch (err) {
     console.error('[biz ensureDbColumns]', err.message);

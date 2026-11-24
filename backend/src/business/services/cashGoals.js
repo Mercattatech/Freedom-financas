@@ -8,8 +8,8 @@ const { audit } = require('../lib/audit');
 let tablesReady = false;
 async function ensureTables() {
   if (tablesReady) return;
-  await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS "biz_cash_goal" (
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS "biz_cash_goal" (
       "id" TEXT PRIMARY KEY,
       "company_id" TEXT NOT NULL,
       "nome" TEXT NOT NULL,
@@ -23,10 +23,9 @@ async function ensureTables() {
       "ativo" BOOLEAN NOT NULL DEFAULT true,
       "created_date" TIMESTAMP NOT NULL DEFAULT now(),
       "updated_date" TIMESTAMP NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS "biz_cash_goal_company_idx" ON "biz_cash_goal"("company_id");
-
-    CREATE TABLE IF NOT EXISTS "biz_cash_goal_entry" (
+    )`,
+    `CREATE INDEX IF NOT EXISTS "biz_cash_goal_company_idx" ON "biz_cash_goal"("company_id")`,
+    `CREATE TABLE IF NOT EXISTS "biz_cash_goal_entry" (
       "id" TEXT PRIMARY KEY,
       "company_id" TEXT NOT NULL,
       "goal_id" TEXT NOT NULL REFERENCES "biz_cash_goal"("id") ON DELETE CASCADE,
@@ -37,10 +36,13 @@ async function ensureTables() {
       "observacoes" TEXT,
       "created_by" TEXT,
       "created_date" TIMESTAMP NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS "biz_cash_goal_entry_company_idx" ON "biz_cash_goal_entry"("company_id");
-    CREATE INDEX IF NOT EXISTS "biz_cash_goal_entry_goal_idx" ON "biz_cash_goal_entry"("goal_id");
-  `);
+    )`,
+    `CREATE INDEX IF NOT EXISTS "biz_cash_goal_entry_company_idx" ON "biz_cash_goal_entry"("company_id")`,
+    `CREATE INDEX IF NOT EXISTS "biz_cash_goal_entry_goal_idx" ON "biz_cash_goal_entry"("goal_id")`,
+  ];
+  for (const sql of statements) {
+    await prisma.$executeRawUnsafe(sql);
+  }
   tablesReady = true;
 }
 
