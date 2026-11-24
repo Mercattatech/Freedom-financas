@@ -12,6 +12,7 @@ import { ProposalList, ProposalEditor } from './pages/Proposals';
 import { ContractList, ContractDetail } from './pages/Contracts';
 import Reports from './pages/Reports';
 import Team from './pages/Team';
+import CashGoals from './pages/CashGoals';
 import Settings from './pages/Settings';
 import { Loading, ErrorBox } from './components/ui';
 
@@ -41,6 +42,7 @@ function Shell() {
             <Route index element={can('relatorios:read') ? <Dashboard /> : <Navigate to="propostas" replace />} />
             <Route path="receber" element={<Transactions tipo="RECEITA" key="r" />} />
             <Route path="pagar" element={<Transactions tipo="DESPESA" key="p" />} />
+            <Route path="reservas" element={<CashGoals />} />
             <Route path="clientes" element={<Registry config={CLIENTS} key="c" />} />
             <Route path="fornecedores" element={<Registry config={SUPPLIERS} key="f" />} />
             <Route path="produtos" element={<Products />} />

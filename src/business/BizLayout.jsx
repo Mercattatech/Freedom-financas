@@ -4,14 +4,14 @@ import { Toaster } from 'sonner';
 import { useTheme } from 'next-themes';
 import {
   LayoutDashboard, ArrowDownToLine, ArrowUpFromLine, Users, Truck, Package, FileSignature, Repeat, BarChart3, Clock3,
-  Settings, ChevronsUpDown, Menu, X, Moon, Sun, Home, Plus,
+  Settings, ChevronsUpDown, Menu, X, Moon, Sun, Home, Plus, PiggyBank,
 } from 'lucide-react';
 import { useBiz } from './BizContext';
 import { cx } from './components/ui';
 
 const NAV = [
   [null, [['', 'Visão geral', LayoutDashboard, 'relatorios:read']]],
-  ['Financeiro', [['receber', 'Contas a receber', ArrowDownToLine], ['pagar', 'Contas a pagar', ArrowUpFromLine]]],
+  ['Financeiro', [['receber', 'Contas a receber', ArrowDownToLine], ['pagar', 'Contas a pagar', ArrowUpFromLine], ['reservas', 'Meta de caixa', PiggyBank, 'relatorios:read']]],
   ['Comercial', [['propostas', 'Propostas', FileSignature], ['contratos', 'Contratos', Repeat], ['clientes', 'Clientes', Users]]],
   ['Operação', [['produtos', 'Produtos e estoque', Package], ['fornecedores', 'Fornecedores', Truck], ['equipe', 'Equipe e horas', Clock3]]],
   ['Análises', [['relatorios', 'DRE e margens', BarChart3, 'relatorios:read']]],

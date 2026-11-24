@@ -16,6 +16,7 @@ const proposals = require('../services/proposals');
 const proposalAi = require('../services/proposalAi');
 const uploadMem = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const team = require('../services/team');
+const cashGoals = require('../services/cashGoals');
 const reports = require('../services/reports');
 const apiKeys = require('../services/apiKeys');
 const asaasSync = require('../services/asaasSync');
@@ -280,6 +281,14 @@ function createBizRouter() {
   r.get('/time-entries', ah(async (req, res) => res.json(await team.listEntries(req.ctx, req.query))));
   r.post('/time-entries', requirePerm('operacional:write'), ah(async (req, res) => res.status(201).json(await team.createEntry(req.ctx, req.body || {}))));
   r.delete('/time-entries/:id', requirePerm('operacional:write'), ah(async (req, res) => res.json(await team.removeEntry(req.ctx, req.params.id))));
+
+  // Meta de Caixa & Reservas
+  r.get('/cash-goals', ah(async (req, res) => res.json(await cashGoals.list(req.ctx))));
+  r.post('/cash-goals', finWrite, ah(async (req, res) => res.status(201).json(await cashGoals.createGoal(req.ctx, req.body || {}))));
+  r.put('/cash-goals/:id', finWrite, ah(async (req, res) => res.json(await cashGoals.updateGoal(req.ctx, req.params.id, req.body || {}))));
+  r.delete('/cash-goals/:id', finWrite, ah(async (req, res) => res.json(await cashGoals.deleteGoal(req.ctx, req.params.id))));
+  r.post('/cash-goals/:id/entries', finWrite, ah(async (req, res) => res.status(201).json(await cashGoals.addEntry(req.ctx, req.params.id, req.body || {}))));
+  r.delete('/cash-goals/entries/:entryId', finWrite, ah(async (req, res) => res.json(await cashGoals.deleteEntry(req.ctx, req.params.entryId))));
 
   // Relatórios
   const rep = requirePerm('relatorios:read');
