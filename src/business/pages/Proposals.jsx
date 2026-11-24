@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Plus, FileSignature, Eye, Copy, Send, Trash2, Repeat, ExternalLink, MessageCircle, GripVertical, X, Sparkles, Mic, Square, Upload, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, FileSignature, Eye, Copy, Send, Trash2, Repeat, ExternalLink, MessageCircle, GripVertical, X, Sparkles, Mic, Square, Upload, FileText, Radio, Headphones } from 'lucide-react';
 import { toast } from 'sonner';
 import { biz } from '../api';
 import { useBiz, useBizQuery, useBizMutation } from '../BizContext';
@@ -22,7 +22,8 @@ export function ProposalList() {
       <PageHeader title="Propostas" subtitle="Monte propostas com a marca da empresa, compartilhe por link e veja quando o cliente abriu."
         actions={can('comercial:write') && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" icon={Sparkles} onClick={() => nav('/empresas/propostas/nova?ia=1')}>Criar com IA (Áudio / Texto)</Button>
+            <Button variant="secondary" icon={Headphones} onClick={() => nav('/empresas/propostas/nova?ia=reuniao')}>Ouvir reunião (Meet/Zoom)</Button>
+            <Button variant="secondary" icon={Sparkles} onClick={() => nav('/empresas/propostas/nova?ia=1')}>Criar com IA</Button>
             <Button icon={Plus} onClick={() => nav('/empresas/propostas/nova')}>Nova proposta</Button>
           </div>
         )} />
@@ -79,7 +80,8 @@ export function ProposalEditor() {
   const q = useBizQuery(`/proposals/${id}`, null, { enabled: !isNew });
   const [f, setF] = useState(null);
   const [mode, setMode] = useState('cliente');
-  const [showAi, setShowAi] = useState(() => sp.get('ia') === '1');
+  const iaParam = sp.get('ia');
+  const [showAi, setShowAi] = useState(() => !!iaParam);
   const [lastTranscript, setLastTranscript] = useState('');
 
   useEffect(() => {
@@ -167,6 +169,7 @@ export function ProposalEditor() {
 
       {editable && showAi && (
         <ProposalAiPanel
+          initialTab={iaParam === 'reuniao' ? 'reuniao' : 'audio'}
           clientId={mode === 'cliente' ? f.client_id : ''}
           onGenerated={({ transcricao, proposta }) => {
             if (transcricao) setLastTranscript(transcricao);
@@ -316,8 +319,8 @@ function fmtSecs(sec) {
   return `${m}:${s}`;
 }
 
-function ProposalAiPanel({ clientId, onGenerated }) {
-  const [aba, setAba] = useState('audio');
+function ProposalAiPanel({ initialTab = 'reuniao', clientId, onGenerated }) {
+  const [aba, setAba] = useState(initialTab);
   const [texto, setTexto] = useState('');
   const [instrucoes, setInstrucoes] = useState('');
   const [audioBlob, setAudioBlob] = useState(null);
@@ -326,16 +329,216 @@ function ProposalAiPanel({ clientId, onGenerated }) {
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
 
+  // Estado do modo "Ouvir Reunião (Meet / Zoom)" ao vivo
+  const [meetingListening, setMeetingListening] = useState(false);
+  const [meetingSeconds, setMeetingSeconds] = useState(0);
+  const [meetingHasTabAudio, setMeetingHasTabAudio] = useState(false);
+  const [meetingHasMic, setMeetingHasMic] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [chunksDone, setChunksDone] = useState(0);
+  const [transcribingCount, setTranscribingCount] = useState(0);
+  const [finalizingMeeting, setFinalizingMeeting] = useState(false);
+
   const recorderRef = useRef(null);
   const streamRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
 
+  // Refs do modo reunião ao vivo
+  const meetingActiveRef = useRef(false);
+  const meetingTimerRef = useRef(null);
+  const meetingChunkTimerRef = useRef(null);
+  const meetingRecorderRef = useRef(null);
+  const meetingDisplayStreamRef = useRef(null);
+  const meetingMicStreamRef = useRef(null);
+  const meetingAudioCtxRef = useRef(null);
+  const meetingMixedStreamRef = useRef(null);
+  const transcriptRef = useRef('');
+  const pendingPromisesRef = useRef([]);
+
+  const cleanupMeetingStreams = () => {
+    meetingActiveRef.current = false;
+    clearInterval(meetingTimerRef.current);
+    clearTimeout(meetingChunkTimerRef.current);
+    meetingDisplayStreamRef.current?.getTracks().forEach((t) => t.stop());
+    meetingMicStreamRef.current?.getTracks().forEach((t) => t.stop());
+    meetingDisplayStreamRef.current = null;
+    meetingMicStreamRef.current = null;
+    meetingMixedStreamRef.current = null;
+    if (meetingAudioCtxRef.current) {
+      meetingAudioCtxRef.current.close().catch(() => {});
+      meetingAudioCtxRef.current = null;
+    }
+    setMeetingListening(false);
+  };
+
   useEffect(() => () => {
     clearInterval(timerRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     if (audioUrl) URL.revokeObjectURL(audioUrl);
+    cleanupMeetingStreams();
   }, [audioUrl]);
+
+  const sendMeetingChunk = (blob, ext) => {
+    if (!blob || blob.size < 1500) return Promise.resolve();
+    setTranscribingCount((c) => c + 1);
+    const fd = new FormData();
+    fd.append('audio', blob, `bloco-${Date.now()}.${ext}`);
+    const p = biz('/proposals/transcribe-chunk', { method: 'POST', body: fd })
+      .then((res) => {
+        const piece = String(res?.text || '').trim();
+        if (piece) {
+          transcriptRef.current = transcriptRef.current ? `${transcriptRef.current}\n${piece}` : piece;
+          setLiveTranscript(transcriptRef.current);
+        }
+        setChunksDone((n) => n + 1);
+      })
+      .catch((err) => {
+        console.warn('[meeting transcribe chunk]', err.message);
+        toast.error(`Erro ao transcrever trecho: ${err.message}`);
+      })
+      .finally(() => {
+        setTranscribingCount((c) => Math.max(0, c - 1));
+      });
+    pendingPromisesRef.current.push(p);
+    return p;
+  };
+
+  const recordNextMeetingChunk = () => {
+    if (!meetingActiveRef.current || !meetingMixedStreamRef.current) return;
+    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => window.MediaRecorder?.isTypeSupported?.(m)) || '';
+    const rec = new MediaRecorder(meetingMixedStreamRef.current, mime ? { mimeType: mime, audioBitsPerSecond: 48000 } : undefined);
+    const localChunks = [];
+    rec.ondataavailable = (e) => { if (e.data?.size > 0) localChunks.push(e.data); };
+    rec.onstop = () => {
+      const finalMime = rec.mimeType || mime || 'audio/webm';
+      const ext = finalMime.includes('mp4') ? 'm4a' : finalMime.includes('ogg') ? 'ogg' : 'webm';
+      const blob = new Blob(localChunks, { type: finalMime });
+      sendMeetingChunk(blob, ext);
+      if (meetingActiveRef.current) {
+        recordNextMeetingChunk();
+      }
+    };
+    rec.start();
+    meetingRecorderRef.current = rec;
+    // Cicla a cada 45 segundos para manter arquivos leves (< 400KB) e transcrição ao vivo
+    meetingChunkTimerRef.current = setTimeout(() => {
+      if (rec.state !== 'inactive') rec.stop();
+    }, 45000);
+  };
+
+  const startMeetingListening = async () => {
+    try {
+      if (!navigator.mediaDevices?.getDisplayMedia) {
+        toast.error('Captura de aba não suportada neste navegador. Use Chrome ou Edge no computador.');
+        return;
+      }
+
+      // 1. Captura a aba da reunião (Google Meet, Zoom Web, Teams, WhatsApp Web)
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      });
+      meetingDisplayStreamRef.current = displayStream;
+      const tabAudioTracks = displayStream.getAudioTracks();
+      const hasTab = tabAudioTracks.length > 0;
+      setMeetingHasTabAudio(hasTab);
+
+      // 2. Captura também o microfone do usuário para ouvir os dois lados da conversa
+      let micStream = null;
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        meetingMicStreamRef.current = micStream;
+      } catch {
+        // segue só com o áudio da aba se o usuário não liberar microfone
+      }
+      const hasMic = !!micStream?.getAudioTracks()?.length;
+      setMeetingHasMic(hasMic);
+
+      if (!hasTab && !hasMic) {
+        cleanupMeetingStreams();
+        toast.error('Nenhum áudio foi capturado. Ao compartilhar a aba da reunião, marque a opção "Compartilhar áudio da guia".');
+        return;
+      }
+      if (!hasTab) {
+        toast.warning('Áudio da aba não foi compartilhado — gravando apenas seu microfone. Para ouvir o cliente também, marque "Compartilhar áudio da guia".');
+      }
+
+      // 3. Mixa o áudio da aba + microfone em um único stream
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      meetingAudioCtxRef.current = audioCtx;
+      const dest = audioCtx.createMediaStreamDestination();
+      if (hasTab) {
+        const tabSource = audioCtx.createMediaStreamSource(new MediaStream(tabAudioTracks));
+        tabSource.connect(dest);
+      }
+      if (hasMic) {
+        const micSource = audioCtx.createMediaStreamSource(micStream);
+        micSource.connect(dest);
+      }
+      meetingMixedStreamRef.current = dest.stream;
+
+      // Se o usuário clicar em "Interromper compartilhamento" na barra do navegador
+      const vTrack = displayStream.getVideoTracks()[0];
+      if (vTrack) {
+        vTrack.onended = () => {
+          if (meetingActiveRef.current) stopMeetingListening(false);
+        };
+      }
+
+      meetingActiveRef.current = true;
+      pendingPromisesRef.current = [];
+      setMeetingSeconds(0);
+      setMeetingListening(true);
+      meetingTimerRef.current = setInterval(() => setMeetingSeconds((s) => s + 1), 1000);
+      recordNextMeetingChunk();
+      toast.success(hasTab && hasMic ? 'Ouvindo a reunião e seu microfone ao vivo!' : 'Escuta iniciada!');
+    } catch (err) {
+      cleanupMeetingStreams();
+      if (err?.name !== 'NotAllowedError') {
+        toast.error(`Não foi possível iniciar a escuta: ${err.message}`);
+      }
+    }
+  };
+
+  const stopMeetingListening = async (autoGenerate = false) => {
+    meetingActiveRef.current = false;
+    clearInterval(meetingTimerRef.current);
+    clearTimeout(meetingChunkTimerRef.current);
+    if (autoGenerate) setFinalizingMeeting(true);
+
+    const rec = meetingRecorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      await new Promise((resolve) => {
+        const prevStop = rec.onstop;
+        rec.onstop = (ev) => {
+          if (prevStop) prevStop(ev);
+          resolve();
+        };
+        rec.stop();
+      });
+    }
+    cleanupMeetingStreams();
+
+    // Aguarda todos os blocos de transcrição em voo concluírem
+    if (pendingPromisesRef.current.length) {
+      await Promise.allSettled(pendingPromisesRef.current);
+      pendingPromisesRef.current = [];
+    }
+
+    if (autoGenerate) {
+      setFinalizingMeeting(false);
+      const finalTxt = transcriptRef.current.trim();
+      if (!finalTxt) {
+        toast.error('Nenhuma fala foi transcrita nesta reunião.');
+        return;
+      }
+      gen.mutate({ overrideTexto: finalTxt });
+    } else {
+      toast.success('Escuta encerrada. Você pode revisar a transcrição abaixo e gerar a proposta.');
+    }
+  };
 
   const setNewAudio = (blob, name) => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
@@ -400,10 +603,11 @@ function ProposalAiPanel({ clientId, onGenerated }) {
     toast.success(`Texto carregado de ${file.name}`);
   };
 
-  const gen = useBizMutation(async () => {
+  const gen = useBizMutation(async (opts = {}) => {
     const fd = new FormData();
-    if (audioBlob) fd.append('audio', audioBlob, audioName || 'reuniao.webm');
-    if (texto.trim()) fd.append('texto', texto.trim());
+    const combinedText = opts.overrideTexto || [liveTranscript.trim(), texto.trim()].filter(Boolean).join('\n\n');
+    if (audioBlob && !opts.overrideTexto) fd.append('audio', audioBlob, audioName || 'reuniao.webm');
+    if (combinedText) fd.append('texto', combinedText);
     if (instrucoes.trim()) fd.append('instrucoes_extras', instrucoes.trim());
     if (clientId) fd.append('client_id', clientId);
     return biz('/proposals/generate-ai', { method: 'POST', body: fd });
@@ -411,7 +615,7 @@ function ProposalAiPanel({ clientId, onGenerated }) {
     onSuccess: (res) => onGenerated(res),
   });
 
-  const canGenerate = !recording && (!!audioBlob || texto.trim().length >= 10);
+  const canGenerate = !recording && !meetingListening && !finalizingMeeting && (!!audioBlob || texto.trim().length >= 10 || liveTranscript.trim().length >= 10);
 
   return (
     <section className="mb-6 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-50/70 via-[var(--surface)] to-emerald-50/40 dark:from-indigo-950/30 dark:via-[var(--surface)] dark:to-emerald-950/20 p-5 shadow-sm">
@@ -422,12 +626,15 @@ function ProposalAiPanel({ clientId, onGenerated }) {
           </div>
           <div>
             <h2 className="text-base font-bold text-[var(--ink)]">Assistente de IA — Gerar Proposta Formal</h2>
-            <p className="text-xs text-[var(--muted)]">Grave o resumo da reunião, envie um áudio ou suba o texto. A IA redige a proposta formal pronta para envio e assinatura do cliente.</p>
+            <p className="text-xs text-[var(--muted)]">Ouça sua reunião ao vivo (Meet/Zoom), grave um áudio ou envie a ata. A IA redige a proposta pronta para assinatura.</p>
           </div>
         </div>
-        <div className="inline-flex rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">
+        <div className="inline-flex flex-wrap rounded-lg border border-[var(--line)] bg-[var(--surface)] p-0.5">
+          <button type="button" onClick={() => setAba('reuniao')} className={cx('inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold transition', aba === 'reuniao' ? 'bg-indigo-600 text-white' : 'text-[var(--ink-2)] hover:text-[var(--ink)]')}>
+            <Headphones className="w-3.5 h-3.5" /> Ouvir Reunião {meetingListening ? '●' : liveTranscript.trim() ? '✓' : ''}
+          </button>
           <button type="button" onClick={() => setAba('audio')} className={cx('inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold transition', aba === 'audio' ? 'bg-indigo-600 text-white' : 'text-[var(--ink-2)] hover:text-[var(--ink)]')}>
-            <Mic className="w-3.5 h-3.5" /> Áudio da reunião {audioBlob ? '✓' : ''}
+            <Mic className="w-3.5 h-3.5" /> Gravar / Subir Áudio {audioBlob ? '✓' : ''}
           </button>
           <button type="button" onClick={() => setAba('texto')} className={cx('inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold transition', aba === 'texto' ? 'bg-indigo-600 text-white' : 'text-[var(--ink-2)] hover:text-[var(--ink)]')}>
             <FileText className="w-3.5 h-3.5" /> Texto / Ata {texto.trim() ? '✓' : ''}
@@ -435,7 +642,65 @@ function ProposalAiPanel({ clientId, onGenerated }) {
         </div>
       </div>
 
-      {aba === 'audio' ? (
+      {aba === 'reuniao' ? (
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 space-y-4">
+          <div className="text-xs text-[var(--muted)] bg-[var(--paper)] rounded-lg p-3 border border-[var(--line-2)] space-y-1">
+            <p className="font-semibold text-[var(--ink)]">Como ouvir sua reunião online sem bot na sala:</p>
+            <p>1. Abra sua chamada (Google Meet, Zoom, Teams ou WhatsApp Web) em outra aba do Chrome/Edge.</p>
+            <p>2. Clique em <b>Iniciar escuta da reunião</b>, selecione a aba da chamada e marque <b>"Compartilhar áudio da guia"</b> (capturamos o áudio do cliente + seu microfone).</p>
+            <p>3. A transcrição acontece automaticamente em blocos durante a call. Ao terminar, clique em <b>Encerrar e gerar proposta</b>.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {!meetingListening ? (
+              <Button type="button" icon={Radio} onClick={startMeetingListening} disabled={finalizingMeeting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                {liveTranscript ? 'Continuar ouvindo reunião' : 'Iniciar escuta da reunião'}
+              </Button>
+            ) : (
+              <>
+                <Button type="button" icon={Sparkles} loading={finalizingMeeting} onClick={() => stopMeetingListening(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
+                  Encerrar e gerar proposta ({fmtSecs(meetingSeconds)})
+                </Button>
+                <Button type="button" variant="secondary" icon={Square} disabled={finalizingMeeting} onClick={() => stopMeetingListening(false)}>
+                  Apenas pausar escuta
+                </Button>
+              </>
+            )}
+
+            {meetingListening && (
+              <div className="inline-flex flex-wrap items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-pulse" />
+                <span>
+                  Ouvindo ao vivo ({meetingHasTabAudio && meetingHasMic ? 'Aba da reunião + Microfone' : meetingHasTabAudio ? 'Aba da reunião' : 'Microfone'})
+                </span>
+                {transcribingCount > 0 && <span className="text-[var(--muted)]">· transcrevendo trecho…</span>}
+                {chunksDone > 0 && <span className="text-[var(--muted)]">· {chunksDone} bloco(s) transcrito(s)</span>}
+              </div>
+            )}
+
+            {finalizingMeeting && (
+              <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-300">Finalizando transcrição do último trecho e montando proposta…</span>
+            )}
+          </div>
+
+          {(liveTranscript || meetingListening) && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[var(--ink-2)]">Transcrição da reunião (ao vivo · editável)</span>
+                {liveTranscript && !meetingListening && (
+                  <button type="button" onClick={() => { transcriptRef.current = ''; setLiveTranscript(''); setChunksDone(0); }} className="text-xs text-[var(--bad)] hover:underline">Limpar transcrição</button>
+                )}
+              </div>
+              <Textarea
+                rows={5}
+                value={liveTranscript}
+                onChange={(e) => { transcriptRef.current = e.target.value; setLiveTranscript(e.target.value); }}
+                placeholder={meetingListening ? 'A transcrição aparecerá aqui automaticamente a cada 45 segundos de conversa…' : ''}
+              />
+            </div>
+          )}
+        </div>
+      ) : aba === 'audio' ? (
         <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4 space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             {!recording ? (
@@ -500,7 +765,7 @@ function ProposalAiPanel({ clientId, onGenerated }) {
           type="button"
           size="lg"
           icon={Sparkles}
-          loading={gen.isPending}
+          loading={gen.isPending || finalizingMeeting}
           disabled={!canGenerate}
           onClick={() => gen.mutate()}
           className="bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"

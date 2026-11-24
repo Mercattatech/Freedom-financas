@@ -264,6 +264,9 @@ function createBizRouter() {
       audioFile: req.file || null,
     }));
   }));
+  r.post('/proposals/transcribe-chunk', comWrite, uploadMem.single('audio'), ah(async (req, res) => {
+    res.json(await proposalAi.transcribeAudioChunk(req.ctx, req.file || null));
+  }));
   r.get('/proposals/:id', ah(async (req, res) => res.json({ ...(await proposals.get(req.ctx, req.params.id)), base_url: baseUrl(req) })));
   r.post('/proposals', comWrite, ah(async (req, res) => res.status(201).json(await proposals.create(req.ctx, req.body || {}))));
   r.put('/proposals/:id', comWrite, ah(async (req, res) => res.json(await proposals.update(req.ctx, req.params.id, req.body || {}))));

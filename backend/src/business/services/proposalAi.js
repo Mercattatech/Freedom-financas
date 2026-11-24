@@ -187,4 +187,13 @@ FORMATO JSON EXATO DE SAÍDA:
   return { transcricao, proposta };
 }
 
-module.exports = { generateFromInput };
+async function transcribeAudioChunk(ctx, audioFile) {
+  if (!audioFile?.buffer?.length) {
+    throw badRequest('Nenhum áudio enviado para transcrição.');
+  }
+  const openai = await getOpenAIClient();
+  const text = await transcribeBuffer(openai, audioFile.buffer, audioFile.originalname, audioFile.mimetype);
+  return { text };
+}
+
+module.exports = { generateFromInput, transcribeAudioChunk };
