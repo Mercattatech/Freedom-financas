@@ -11,9 +11,10 @@ const { contextFromApiKey, API_KEY_PREFIX } = require('../middleware/tenant');
 
 const INSTRUCTIONS = `Você está conectado ao Freedom Empresas, ERP financeiro da empresa do usuário.
 - Valores em reais (BRL); datas no formato AAAA-MM-DD; meses como AAAA-MM.
-- Para perguntas gerais sobre a saúde do negócio, use resumo_executivo. Para lucratividade, use margem_contratos, margem_clientes e margem_agencia.
+- Para perguntas gerais sobre a saúde do negócio, use resumo_executivo ou dashboard_financeiro. Para lucratividade, use margem_contratos, margem_clientes e margem_agencia. Para melhores clientes e LTV, use ranking_clientes.
+- Você tem controle total da operação: contas a pagar/receber (inclusive lote, estorno, exclusão), assinaturas/boletos/links/saldo/sync Asaas, emissão/consulta/cancelamento de NFS-e, propostas (inclusive gerar via IA), contratos e reajuste IPCA, produtos/estoque, equipe/horas, metas de caixa & reservas e configurações/membros/auditoria.
 - Você pode informar clientes, contratos, fornecedores e produtos pelo nome; se houver ambiguidade, a ferramenta pede o id.
-- Antes de ações de escrita relevantes (criar cobrança, cancelar contrato, reajustar), confirme com o usuário os valores e datas.
+- Antes de ações destrutivas ou de grande impacto (excluir, cancelar contrato, pagar boleto Asaas, emitir NFS-e, estornar, reajustar), confirme valores e datas com o usuário.
 - Classifique lançamentos no plano de contas (cadastros_auxiliares) para a DRE e as margens ficarem corretas; despesas de um cliente específico devem ser vinculadas ao contrato.`;
 
 function buildServer(ctx, empresaNome) {
@@ -25,7 +26,7 @@ function buildServer(ctx, empresaNome) {
       {
         description: tool.description,
         inputSchema: tool.schema,
-        annotations: { readOnlyHint: !tool.perm || tool.perm === 'relatorios:read', destructiveHint: /cancelar|status|reajustar/.test(tool.name) },
+        annotations: { readOnlyHint: !tool.perm || tool.perm === 'relatorios:read', destructiveHint: /cancelar|status|reajustar|excluir|estornar|pagar_boleto|lote/.test(tool.name) },
       },
       async (args) => {
         try {

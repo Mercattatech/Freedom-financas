@@ -10,6 +10,7 @@ function buildPersonalServer(ctx, familias = []) {
 - Este MCP é EXCLUSIVO de finanças pessoais/familiares (não acessa dados empresariais).
 - Famílias acessíveis: ${nomes}.
 - Valores em reais (BRL); datas no formato AAAA-MM-DD; meses (competência) no formato AAAA-MM.
+- Você tem controle completo: famílias, categorias/subcategorias, despesas e receitas, cartões de crédito e faturas, contas fixas recorrentes, orçamentos mensais, metas, dívidas e pagamentos, caixinhas de investimento, carteira de ações/alertas, bens/patrimônio e evolução financeira.
 - Sempre informe na resposta o nome da família em que o lançamento ou consulta foi realizado.
 - Use listar_familias quando precisar descobrir os nomes exatos das categorias ou cartões de crédito disponíveis.`;
 
@@ -24,7 +25,7 @@ function buildPersonalServer(ctx, familias = []) {
         inputSchema: tool.schema,
         annotations: {
           readOnlyHint: !!tool.readOnly,
-          destructiveHint: tool.name === 'excluir_lancamento',
+          destructiveHint: /excluir_|pagar_divida/.test(tool.name),
         },
       },
       async (args) => {

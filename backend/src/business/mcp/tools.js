@@ -10,6 +10,13 @@ const contracts = require('../services/contracts');
 const proposals = require('../services/proposals');
 const team = require('../services/team');
 const reports = require('../services/reports');
+const companies = require('../services/companies');
+const invoices = require('../services/invoices');
+const asaasImport = require('../services/asaasImport');
+const cashGoals = require('../services/cashGoals');
+const proposalAi = require('../services/proposalAi');
+const { AsaasClient } = require('../services/asaas');
+const { getIpca12m } = require('../lib/indices');
 const { today, ymd, ym } = require('../lib/dates');
 
 const periodo = {
@@ -485,6 +492,498 @@ const TOOLS = [
       const { getAiDashboard } = require('../services/aiBridge');
       return getAiDashboard(ctx, a);
     },
+  },
+
+  // ───────────── Funcionalidades completas do Freedom Empresas ─────────────
+  {
+    name: 'ranking_clientes', perm: 'relatorios:read',
+    description: 'Ranking dos melhores clientes (Ouro, Prata e Bronze) por valor pago (LTV), pontualidade e tempo de casa, além do LTV médio da empresa.',
+    schema: { limite: z.number().int().min(1).max(100).optional() },
+    handler: (ctx, a) => reports.clientsRanking(ctx, { limit: a.limite || 15 }),
+  },
+  {
+    name: 'saldo_asaas', perm: 'relatorios:read',
+    description: 'Consulta o saldo em tempo real disponível na conta Asaas conectada à empresa.',
+    schema: {},
+    handler: async (ctx) => {
+      const full = await prisma.bizCompany.findUnique({
+        where: { id: ctx.companyId },
+        select: { asaas_api_key: true, asaas_ambiente: true },
+      });
+      if (!full?.asaas_api_key) return { configurado: false, conectado: false, saldo: null };
+      try {
+        const bal = await new AsaasClient(full).getBalance();
+        const saldo = typeof bal?.balance === 'number' ? bal.balance : (bal?.totalBalance != null ? Number(bal.totalBalance) : (bal?.balance != null ? Number(bal.balance) : null));
+        return { configurado: true, conectado: true, ambiente: full.asaas_ambiente, saldo };
+      } catch (e) {
+        return { configurado: true, conectado: false, ambiente: full.asaas_ambiente, erro: e.message, saldo: null };
+      }
+    },
+  },
+  {
+    name: 'sincronizar_conta_asaas', perm: 'financeiro:write',
+    description: 'Sincroniza e importa todo o histórico da conta Asaas (clientes, assinaturas, cobranças a receber e contas a pagar) sem duplicidades.',
+    schema: {},
+    handler: (ctx) => asaasImport.syncAllFromAsaas(ctx, {}),
+  },
+  {
+    name: 'links_pagamento_asaas', perm: 'financeiro:write',
+    description: 'Lista ou cria Links de Pagamento avulsos ou recorrentes diretamente no Asaas.',
+    schema: {
+      acao: z.enum(['listar', 'criar']),
+      nome: z.string().optional().describe('Obrigatório ao criar'),
+      descricao: z.string().optional(),
+      valor: z.number().positive().optional().describe('Obrigatório ao criar'),
+      tipo_cobranca: z.enum(['DETACHED', 'RECURRENT', 'INSTALLMENT']).optional(),
+      forma_pagamento: z.enum(['UNDEFINED', 'BOLETO', 'CREDIT_CARD', 'PIX']).optional(),
+      max_parcelas: z.number().int().min(1).max(24).optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'listar') return asaasImport.listPaymentLinks(ctx, {});
+      return asaasImport.createPaymentLink(ctx, {
+        name: a.nome,
+        description: a.descricao,
+        value: a.valor,
+        chargeType: a.tipo_cobranca || 'DETACHED',
+        billingType: a.forma_pagamento || 'UNDEFINED',
+        maxInstallmentCount: a.max_parcelas || 1,
+      });
+    },
+  },
+  {
+    name: 'pagar_boleto_asaas', perm: 'financeiro:write',
+    description: 'Paga ou agenda o pagamento de um boleto bancário usando o saldo da conta Asaas e lança automaticamente no Contas a Pagar.',
+    schema: {
+      linha_digitavel: z.string().min(10).describe('Linha digitável ou código de barras do boleto'),
+      valor: z.number().positive().describe('Valor do boleto'),
+      vencimento: z.string().optional().describe('AAAA-MM-DD'),
+      data_agendamento: z.string().optional().describe('AAAA-MM-DD (se não informado, agenda/paga hoje)'),
+      descricao: z.string().optional(),
+      ...idOuNome('fornecedor'),
+      conta: z.string().optional().describe('Conta do plano de contas'),
+      centro_custo: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      const [sp, acc, cc] = await Promise.all([
+        a.fornecedor_id || a.fornecedor ? R.supplier(ctx, a.fornecedor_id, a.fornecedor) : null,
+        a.conta ? R.account(ctx, null, a.conta) : null,
+        a.centro_custo ? R.costCenter(ctx, null, a.centro_custo) : null,
+      ]);
+      return asaasImport.payBillViaAsaas(ctx, {
+        identificationField: a.linha_digitavel,
+        value: a.valor,
+        dueDate: a.vencimento,
+        scheduleDate: a.data_agendamento,
+        description: a.descricao,
+        supplier_id: sp?.id,
+        account_id: acc?.id,
+        cost_center_id: cc?.id,
+      });
+    },
+  },
+  {
+    name: 'gerenciar_nfse', perm: 'financeiro:write',
+    description: 'Emite, consulta status (PDF/XML) ou cancela a Nota Fiscal de Serviço Eletrônica (NFS-e) no Asaas de uma conta a receber.',
+    schema: {
+      acao: z.enum(['emitir', 'consultar', 'cancelar']),
+      lancamento_id: z.string(),
+      descricao_servico: z.string().optional(),
+      codigo_servico_municipal: z.string().optional(),
+      motivo: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'emitir') {
+        return invoices.issueInvoice(ctx, a.lancamento_id, {
+          serviceDescription: a.descricao_servico,
+          municipalServiceCode: a.codigo_servico_municipal,
+        });
+      }
+      if (a.acao === 'consultar') return invoices.syncInvoiceStatus(ctx, a.lancamento_id);
+      return invoices.cancelInvoice(ctx, a.lancamento_id, { motivo: a.motivo });
+    },
+  },
+  {
+    name: 'estornar_lancamento', perm: 'financeiro:write',
+    description: 'Estorna a baixa de um lançamento pago, retornando-o para pendente.',
+    schema: { lancamento_id: z.string() },
+    handler: async (ctx, a) => enxuto(await transactions.reopen(ctx, a.lancamento_id)),
+  },
+  {
+    name: 'excluir_lancamento', perm: 'financeiro:write',
+    description: 'Exclui definitivamente um lançamento não pago.',
+    schema: { lancamento_id: z.string() },
+    handler: (ctx, a) => transactions.remove(ctx, a.lancamento_id),
+  },
+  {
+    name: 'operacao_lote_lancamentos', perm: 'financeiro:write',
+    description: 'Executa baixa, cancelamento, exclusão ou atualização (conta DRE, centro de custo, forma de pagamento, vencimento) em vários lançamentos de uma só vez.',
+    schema: {
+      acao: z.enum(['baixar', 'cancelar', 'excluir', 'atualizar']),
+      ids: z.array(z.string()).min(1),
+      data_pagamento: z.string().optional(),
+      conta_financeira: z.string().optional(),
+      motivo: z.string().optional(),
+      cancelar_asaas: z.boolean().optional(),
+      conta: z.string().optional().describe('Conta do plano de contas (para acao=atualizar)'),
+      centro_custo: z.string().optional(),
+      forma_pagamento: z.string().optional(),
+      vencimento: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'baixar') {
+        const ba = a.conta_financeira ? await R.bankAccount(ctx, null, a.conta_financeira) : null;
+        return transactions.batchPay(ctx, { ids: a.ids, data_pagamento: a.data_pagamento, bank_account_id: ba?.id });
+      }
+      if (a.acao === 'cancelar') {
+        return transactions.batchCancel(ctx, { ids: a.ids, motivo: a.motivo, cancelar_asaas: !!a.cancelar_asaas });
+      }
+      if (a.acao === 'excluir') {
+        return transactions.batchDelete(ctx, { ids: a.ids });
+      }
+      const patch = {};
+      if (a.conta) patch.account_id = (await R.account(ctx, null, a.conta)).id;
+      if (a.centro_custo) patch.cost_center_id = (await R.costCenter(ctx, null, a.centro_custo)).id;
+      if (a.conta_financeira) patch.bank_account_id = (await R.bankAccount(ctx, null, a.conta_financeira)).id;
+      if (a.forma_pagamento) patch.forma_pagamento = a.forma_pagamento;
+      if (a.vencimento) patch.vencimento = a.vencimento;
+      return transactions.batchUpdate(ctx, { ids: a.ids, patch });
+    },
+  },
+  {
+    name: 'buscar_fornecedores', perm: null,
+    description: 'Busca fornecedores e prestadores cadastrados por nome, CNPJ/CPF, e-mail ou categoria.',
+    schema: { busca: z.string().optional(), categoria: z.string().optional(), ativo: z.boolean().optional() },
+    handler: async (ctx, a) => lim(await registry.list(ctx, 'suppliers', { q: a.busca, categoria: a.categoria, ativo: a.ativo })),
+  },
+  {
+    name: 'gerenciar_cliente', perm: 'clientes:write',
+    description: 'Edita dados ou exclui/inativa um cliente existente.',
+    schema: {
+      acao: z.enum(['editar', 'excluir']),
+      ...idOuNome('cliente'),
+      nome: z.string().optional(),
+      nome_fantasia: z.string().optional(),
+      documento: z.string().optional(),
+      email: z.string().optional(),
+      telefone: z.string().optional(),
+      contato_nome: z.string().optional(),
+      segmento: z.string().optional(),
+      status: z.enum(['LEAD', 'ATIVO', 'INATIVO', 'CHURN']).optional(),
+      observacoes: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      const cl = await R.client(ctx, a.cliente_id, a.cliente);
+      if (!cl) throw new Error('Informe o cliente');
+      if (a.acao === 'excluir') return registry.remove(ctx, 'clients', cl.id);
+      const { acao, cliente_id, cliente, ...patch } = a;
+      return registry.update(ctx, 'clients', cl.id, patch);
+    },
+  },
+  {
+    name: 'gerenciar_fornecedor', perm: 'cadastros:write',
+    description: 'Edita dados ou exclui um fornecedor/prestador existente.',
+    schema: {
+      acao: z.enum(['editar', 'excluir']),
+      ...idOuNome('fornecedor'),
+      nome: z.string().optional(),
+      documento: z.string().optional(),
+      email: z.string().optional(),
+      telefone: z.string().optional(),
+      categoria: z.string().optional(),
+      chave_pix: z.string().optional(),
+      observacoes: z.string().optional(),
+      ativo: z.boolean().optional(),
+    },
+    handler: async (ctx, a) => {
+      const sp = await R.supplier(ctx, a.fornecedor_id, a.fornecedor);
+      if (!sp) throw new Error('Informe o fornecedor');
+      if (a.acao === 'excluir') return registry.remove(ctx, 'suppliers', sp.id);
+      const { acao, fornecedor_id, fornecedor, ...patch } = a;
+      return registry.update(ctx, 'suppliers', sp.id, patch);
+    },
+  },
+  {
+    name: 'gerenciar_produto_servico', perm: 'cadastros:write',
+    description: 'Edita, exclui ou consulta movimentações de estoque de um produto ou serviço.',
+    schema: {
+      acao: z.enum(['editar', 'excluir', 'movimentacoes']),
+      ...idOuNome('produto'),
+      nome: z.string().optional(),
+      descricao: z.string().optional(),
+      preco_venda: z.number().optional(),
+      custo_unitario: z.number().optional(),
+      horas_estimadas: z.number().optional(),
+      cobranca: z.enum(['UNICA', 'RECORRENTE']).optional(),
+      estoque_minimo: z.number().optional(),
+      ativo: z.boolean().optional(),
+    },
+    handler: async (ctx, a) => {
+      const p = await R.product(ctx, a.produto_id, a.produto);
+      if (!p) throw new Error('Informe o produto ou serviço');
+      if (a.acao === 'movimentacoes') return lim(await products.listMovements(ctx, { product_id: p.id }));
+      if (a.acao === 'excluir') return products.remove(ctx, p.id);
+      const { acao, produto_id, produto, ...patch } = a;
+      return products.update(ctx, p.id, patch);
+    },
+  },
+  {
+    name: 'gerenciar_cadastro_auxiliar', perm: 'config:write',
+    description: 'Cria, edita ou exclui cadastros auxiliares: accounts (plano de contas), cost-centers (centros de custo), bank-accounts (contas bancárias) ou team (colaboradores com custo/hora).',
+    schema: {
+      entidade: z.enum(['accounts', 'cost-centers', 'bank-accounts', 'team']),
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      id: z.string().optional(),
+      dados: z.record(z.string(), z.any()).optional().describe('Campos do registro conforme a entidade'),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'criar') return registry.create(ctx, a.entidade, a.dados || {});
+      if (!a.id) throw new Error('Informe o id do registro');
+      if (a.acao === 'excluir') return registry.remove(ctx, a.entidade, a.id);
+      return registry.update(ctx, a.entidade, a.id, a.dados || {});
+    },
+  },
+  {
+    name: 'editar_contrato', perm: 'contratos:write',
+    description: 'Edita parâmetros de um contrato (título, valores, custo direto previsto, horas previstas, dia de vencimento, índice/data de reajuste, comissão, imposto).',
+    schema: {
+      ...idOuNome('contrato'),
+      titulo: z.string().optional(),
+      valor_recorrente: z.number().optional(),
+      valor_pontual: z.number().optional(),
+      dia_vencimento: z.number().int().min(1).max(28).optional(),
+      data_fim: z.string().optional(),
+      custo_previsto_mensal: z.number().optional(),
+      horas_previstas_mensal: z.number().optional(),
+      comissao_percent: z.number().optional(),
+      aliquota_imposto: z.number().optional(),
+      indice_reajuste: z.enum(['IPCA', 'IGPM', 'FIXO', 'NENHUM']).optional(),
+      data_reajuste: z.string().optional(),
+      responsavel: z.string().optional(),
+      observacoes: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      const c = await R.contract(ctx, a.contrato_id, a.contrato);
+      if (!c) throw new Error('Informe o contrato');
+      const { contrato_id, contrato, ...patch } = a;
+      return contracts.update(ctx, c.id, patch);
+    },
+  },
+  {
+    name: 'excluir_contrato', perm: 'contratos:write',
+    description: 'Exclui um contrato em rascunho que não possua lançamentos.',
+    schema: { ...idOuNome('contrato') },
+    handler: async (ctx, a) => {
+      const c = await R.contract(ctx, a.contrato_id, a.contrato);
+      if (!c) throw new Error('Informe o contrato');
+      return contracts.remove(ctx, c.id);
+    },
+  },
+  {
+    name: 'consultar_ipca_e_reajuste_padrao', perm: 'contratos:write',
+    description: 'Consulta o IPCA acumulado 12m oficial do Banco Central e, opcionalmente, aplica o reajuste anual padrão (IPCA todo dia 01/01) aos contratos recorrentes sem data definida.',
+    schema: { aplicar_padrao_contratos: z.boolean().optional() },
+    handler: async (ctx, a) => {
+      const ipca = await getIpca12m();
+      const padrao = a.aplicar_padrao_contratos ? await contracts.applyDefaultReadjustment(ctx) : null;
+      return { ipca, padrao };
+    },
+  },
+  {
+    name: 'gerenciar_proposta', perm: 'comercial:write',
+    description: 'Detalha, edita, duplica ou exclui uma proposta comercial.',
+    schema: {
+      acao: z.enum(['detalhar', 'editar', 'duplicar', 'excluir']),
+      ...idOuNome('proposta'),
+      titulo: z.string().optional(),
+      introducao: z.string().optional(),
+      escopo: z.string().optional(),
+      condicoes: z.string().optional(),
+      desconto_percent: z.number().optional(),
+      prazo_contrato_meses: z.number().int().optional(),
+      validade: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      const p = await R.proposal(ctx, a.proposta_id, a.proposta);
+      if (!p) throw new Error('Informe a proposta');
+      if (a.acao === 'detalhar') return proposals.get(ctx, p.id);
+      if (a.acao === 'duplicar') return proposals.duplicate(ctx, p.id);
+      if (a.acao === 'excluir') return proposals.remove(ctx, p.id);
+      const { acao, proposta_id, proposta, ...patch } = a;
+      return proposals.update(ctx, p.id, patch);
+    },
+  },
+  {
+    name: 'gerar_proposta_ia', perm: 'comercial:write',
+    description: 'Gera uma proposta comercial formal completa via IA a partir do texto/ata de uma reunião comercial, cruzando com catálogo e clientes. Com salvar_rascunho=true já salva na lista de propostas.',
+    schema: {
+      texto_reuniao: z.string().min(10),
+      instrucoes_extras: z.string().optional(),
+      ...idOuNome('cliente'),
+      salvar_rascunho: z.boolean().optional(),
+    },
+    handler: async (ctx, a) => {
+      const cl = a.cliente_id || a.cliente ? await R.client(ctx, a.cliente_id, a.cliente) : null;
+      const res = await proposalAi.generateFromInput(ctx, {
+        texto: a.texto_reuniao,
+        instrucoes_extras: a.instrucoes_extras,
+        client_id: cl?.id,
+      });
+      if (a.salvar_rascunho) {
+        const criada = await proposals.create(ctx, res.proposta);
+        return { salva: true, proposta: criada, link_publico: `/proposta/${criada.public_token}` };
+      }
+      return { salva: false, rascunho_gerado: res.proposta };
+    },
+  },
+  {
+    name: 'gerenciar_horas_equipe', perm: 'operacional:write',
+    description: 'Lista ou remove apontamentos de horas da equipe em contratos.',
+    schema: {
+      acao: z.enum(['listar', 'excluir']),
+      ...idOuNome('contrato'),
+      ...idOuNome('colaborador'),
+      apontamento_id: z.string().optional(),
+      limite: z.number().int().max(200).optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'excluir') {
+        if (!a.apontamento_id) throw new Error('Informe apontamento_id');
+        return team.removeEntry(ctx, a.apontamento_id);
+      }
+      const c = a.contrato_id || a.contrato ? await R.contract(ctx, a.contrato_id, a.contrato) : null;
+      const m = a.colaborador_id || a.colaborador ? await R.teamMember(ctx, a.colaborador_id, a.colaborador) : null;
+      return lim(await team.listEntries(ctx, { contract_id: c?.id, team_member_id: m?.id, limit: a.limite || 50 }));
+    },
+  },
+  {
+    name: 'consultar_metas_caixa', perm: 'relatorios:read',
+    description: 'Consulta as metas de caixa e reservas empresariais, fôlego financeiro (meses de cobertura / saúde), saldo acumulado e histórico de aportes.',
+    schema: {},
+    handler: (ctx) => cashGoals.list(ctx),
+  },
+  {
+    name: 'gerenciar_meta_caixa', perm: 'financeiro:write',
+    description: 'Cria, edita ou exclui uma meta de caixa / reserva empresarial (com valor alvo, aporte mensal e taxa estimada de rendimento).',
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      descricao: z.string().optional(),
+      valor_meta: z.number().positive().optional(),
+      aporte_mensal: z.number().min(0).optional(),
+      taxa_mensal_percent: z.number().min(0).optional(),
+      prazo_meses: z.number().int().min(1).max(360).optional(),
+      saldo_inicial: z.number().min(0).optional(),
+      conta_financeira: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      const ba = a.conta_financeira ? await R.bankAccount(ctx, null, a.conta_financeira) : null;
+      if (a.acao === 'criar') {
+        return cashGoals.createGoal(ctx, {
+          nome: a.nome, descricao: a.descricao, valor_meta: a.valor_meta, aporte_mensal: a.aporte_mensal,
+          taxa_mensal_percent: a.taxa_mensal_percent, prazo_meses: a.prazo_meses, saldo_inicial: a.saldo_inicial,
+          bank_account_id: ba?.id,
+        });
+      }
+      let targetId = a.id;
+      if (!targetId && a.nome) {
+        const list = await cashGoals.list(ctx);
+        const ql = a.nome.toLowerCase();
+        const found = list.items.find((g) => g.nome.toLowerCase() === ql) || list.items.find((g) => g.nome.toLowerCase().includes(ql));
+        if (!found) throw new Error(`Meta de caixa "${a.nome}" não encontrada`);
+        targetId = found.id;
+      }
+      if (!targetId) throw new Error('Informe id ou nome da meta de caixa');
+      if (a.acao === 'excluir') return cashGoals.deleteGoal(ctx, targetId);
+      return cashGoals.updateGoal(ctx, targetId, {
+        ...(a.nome && !a.id ? {} : a.nome ? { nome: a.nome } : {}),
+        ...(a.descricao !== undefined && { descricao: a.descricao }),
+        ...(a.valor_meta !== undefined && { valor_meta: a.valor_meta }),
+        ...(a.aporte_mensal !== undefined && { aporte_mensal: a.aporte_mensal }),
+        ...(a.taxa_mensal_percent !== undefined && { taxa_mensal_percent: a.taxa_mensal_percent }),
+        ...(a.prazo_meses !== undefined && { prazo_meses: a.prazo_meses }),
+        ...(ba && { bank_account_id: ba.id }),
+      });
+    },
+  },
+  {
+    name: 'lancar_meta_caixa', perm: 'financeiro:write',
+    description: 'Direciona um aporte ou registra um resgate em uma meta de caixa empresarial (ou exclui um lançamento de caixa).',
+    schema: {
+      acao: z.enum(['aporte', 'resgate', 'excluir_lancamento']),
+      meta_caixa: z.string().optional().describe('Nome da meta de caixa'),
+      goal_id: z.string().optional(),
+      entry_id: z.string().optional().describe('Obrigatório para acao=excluir_lancamento'),
+      valor: z.number().positive().optional(),
+      data: z.string().optional().describe('AAAA-MM-DD'),
+      conta_financeira: z.string().optional(),
+      observacoes: z.string().optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'excluir_lancamento') {
+        if (!a.entry_id) throw new Error('Informe entry_id');
+        return cashGoals.deleteEntry(ctx, a.entry_id);
+      }
+      let goalId = a.goal_id;
+      if (!goalId && a.meta_caixa) {
+        const list = await cashGoals.list(ctx);
+        const ql = a.meta_caixa.toLowerCase();
+        const found = list.items.find((g) => g.nome.toLowerCase() === ql) || list.items.find((g) => g.nome.toLowerCase().includes(ql));
+        if (!found) throw new Error(`Meta de caixa "${a.meta_caixa}" não encontrada`);
+        goalId = found.id;
+      }
+      if (!goalId) throw new Error('Informe meta_caixa ou goal_id');
+      const ba = a.conta_financeira ? await R.bankAccount(ctx, null, a.conta_financeira) : null;
+      return cashGoals.addEntry(ctx, goalId, {
+        tipo: a.acao.toUpperCase(),
+        valor: a.valor,
+        data: a.data,
+        bank_account_id: ba?.id,
+        observacoes: a.observacoes,
+      });
+    },
+  },
+  {
+    name: 'dados_empresa', perm: 'config:write',
+    description: 'Consulta ou atualiza as configurações gerais da empresa (parâmetros de margem, impostos, comissão, NFS-e, textos de propostas).',
+    schema: {
+      acao: z.enum(['consultar', 'atualizar']).optional().default('consultar'),
+      dados: z.record(z.string(), z.any()).optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'atualizar') return companies.update(ctx, a.dados || {});
+      return companies.get(ctx);
+    },
+  },
+  {
+    name: 'gerenciar_membros_empresa', perm: 'config:write',
+    description: 'Lista, adiciona ou altera o papel/status de usuários com acesso à empresa (ADMIN, COLABORADOR, FINANCEIRO, COMERCIAL, OPERACIONAL, LEITURA).',
+    schema: {
+      acao: z.enum(['listar', 'adicionar', 'atualizar']),
+      email: z.string().optional(),
+      member_id: z.string().optional(),
+      papel: z.enum(['OWNER', 'ADMIN', 'COLABORADOR', 'FINANCEIRO', 'COMERCIAL', 'OPERACIONAL', 'LEITURA']).optional(),
+      ativo: z.boolean().optional(),
+    },
+    handler: async (ctx, a) => {
+      if (a.acao === 'listar') return companies.listMembers(ctx);
+      if (a.acao === 'adicionar') return companies.addMember(ctx, { email: a.email, papel: a.papel });
+      if (!a.member_id) throw new Error('Informe member_id');
+      return companies.updateMember(ctx, a.member_id, { papel: a.papel, ativo: a.ativo });
+    },
+  },
+  {
+    name: 'consultar_auditoria', perm: 'config:write',
+    description: 'Consulta os registros recentes de auditoria da empresa (ações de usuários, sistema e MCP).',
+    schema: {
+      origem: z.string().optional().describe('Ex.: MCP, WEB, SISTEMA, ASAAS'),
+      limite: z.number().int().min(1).max(200).optional(),
+    },
+    handler: async (ctx, a) => prisma.bizAuditLog.findMany({
+      where: { company_id: ctx.companyId, ...(a.origem ? { origem: a.origem } : {}) },
+      orderBy: { created_date: 'desc' },
+      take: Math.min(a.limite || 50, 200),
+    }),
   },
 ];
 

@@ -4,6 +4,17 @@ const prisma = require('../business/db');
 const { badRequest, notFound } = require('../business/lib/errors');
 const { recalcularFaturaCartao, calcularCompetenciaFatura } = require('../services/creditCardBill');
 
+const DEFAULT_CATEGORIES = [
+  { nome: 'Moradia', tipo: 'DESPESA', cor: '#3B82F6', icone: 'Home', subs: ['Aluguel', 'Condomínio', 'Luz', 'Água', 'Internet'] },
+  { nome: 'Alimentação', tipo: 'DESPESA', cor: '#F59E0B', icone: 'Utensils', subs: ['Supermercado', 'Restaurante', 'Padaria', 'Delivery'] },
+  { nome: 'Transporte', tipo: 'DESPESA', cor: '#6366F1', icone: 'Car', subs: ['Combustível', 'Aplicativo', 'Estacionamento', 'Manutenção'] },
+  { nome: 'Saúde', tipo: 'DESPESA', cor: '#10B981', icone: 'HeartPulse', subs: ['Plano de Saúde', 'Farmácia', 'Consultas', 'Exames'] },
+  { nome: 'Lazer', tipo: 'DESPESA', cor: '#EC4899', icone: 'Smile', subs: ['Cinema', 'Shows', 'Viagens', 'Hobbys'] },
+  { nome: 'Educação', tipo: 'DESPESA', cor: '#8B5CF6', icone: 'GraduationCap', subs: ['Mensalidade', 'Cursos', 'Material Escolar', 'Livros'] },
+  { nome: 'Salário', tipo: 'RECEITA', cor: '#10B981', icone: 'Wallet', subs: ['Principal', 'Adiantamento', 'Férias', '13º Salário'] },
+  { nome: 'Investimentos', tipo: 'RECEITA', cor: '#3B82F6', icone: 'TrendingUp', subs: ['Dividendos', 'Rendimentos', 'Resgates'] },
+];
+
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const todayYmd = () => new Date().toISOString().slice(0, 10);
 const currentYm = () => new Date().toISOString().slice(0, 7);
@@ -630,6 +641,846 @@ const TOOLS = [
       });
 
       return { familia: fam.nome_familia, competencia: comp, categoria: cat.nome, valor_orcado: budget.valor_orcado };
+    },
+  },
+  {
+    name: 'gerenciar_familia',
+    description: 'Cria uma nova família (já com categorias padrão) ou edita nome, tipo e moeda de uma família existente.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar']),
+      familia: z.string().optional().describe('Nome ou ID da família (para editar)'),
+      nome_familia: z.string().optional().describe('Nome da família'),
+      tipo_familia: z.string().optional().describe('Ex.: SEM_FILHOS, 2_FILHOS, 3_FILHOS...'),
+      moeda: z.string().optional().describe('Padrão: BRL'),
+    },
+    handler: async (ctx, args) => {
+      if (args.acao === 'criar') {
+        if (ctx.familyId) throw badRequest('Este token está restrito a uma única família e não pode criar outras.');
+        const nome = String(args.nome_familia || '').trim();
+        if (!nome) throw badRequest('Informe nome_familia');
+        const fam = await prisma.$transaction(async (tx) => {
+          const created = await tx.family.create({
+            data: {
+              nome_familia: nome,
+              tipo_familia: args.tipo_familia || 'SEM_FILHOS',
+              moeda: args.moeda || 'BRL',
+              created_by: ctx.email,
+            },
+          });
+          for (const cat of DEFAULT_CATEGORIES) {
+            const c = await tx.category.create({
+              data: { nome: cat.nome, tipo: cat.tipo, cor: cat.cor, icone: cat.icone, family_id: created.id, ativo: true },
+            });
+            await tx.subcategory.createMany({ data: cat.subs.map((s) => ({ nome: s, category_id: c.id, ativo: true })) });
+          }
+          return created;
+        }, { timeout: 20000 });
+        return { ok: true, acao: 'criar', familia: fam };
+      }
+      const fam = await resolveFamily(ctx, args.familia);
+      const upd = await prisma.family.update({
+        where: { id: fam.id },
+        data: {
+          ...(args.nome_familia && { nome_familia: String(args.nome_familia).trim() }),
+          ...(args.tipo_familia && { tipo_familia: args.tipo_familia }),
+          ...(args.moeda && { moeda: args.moeda }),
+        },
+      });
+      return { ok: true, acao: 'editar', familia: upd };
+    },
+  },
+  {
+    name: 'gerenciar_categoria',
+    description: 'Cria, edita ou desativa (exclui com segurança) uma categoria pessoal de DESPESA ou RECEITA.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome: z.string().optional().describe('Nome da categoria'),
+      novo_nome: z.string().optional(),
+      tipo: z.enum(['DESPESA', 'RECEITA']).optional(),
+      cor: z.string().optional(),
+      icone: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome || !args.tipo) throw badRequest('Informe nome e tipo (DESPESA ou RECEITA)');
+        const cat = await prisma.category.create({
+          data: { nome: args.nome.trim(), tipo: args.tipo, cor: args.cor || '#10B981', icone: args.icone || null, family_id: fam.id, ativo: true },
+        });
+        return { ok: true, familia: fam.nome_familia, categoria: cat };
+      }
+      const cat = args.id
+        ? await prisma.category.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : await findCategory(fam.id, args.nome, args.tipo);
+      if (!cat) throw notFound('Categoria');
+      if (args.acao === 'excluir') {
+        await prisma.category.update({ where: { id: cat.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, desativada: cat.nome };
+      }
+      const upd = await prisma.category.update({
+        where: { id: cat.id },
+        data: {
+          ...(args.novo_nome && { nome: args.novo_nome.trim() }),
+          ...(args.tipo && { tipo: args.tipo }),
+          ...(args.cor && { cor: args.cor }),
+          ...(args.icone !== undefined && { icone: args.icone }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, categoria: upd };
+    },
+  },
+  {
+    name: 'gerenciar_subcategoria',
+    description: 'Cria, renomeia ou desativa uma subcategoria vinculada a uma categoria.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      categoria: z.string().min(1).describe('Nome ou ID da categoria pai'),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      novo_nome: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const cat = await findCategory(fam.id, args.categoria);
+      if (!cat) throw notFound('Categoria');
+      if (args.acao === 'criar') {
+        if (!args.nome) throw badRequest('Informe nome da subcategoria');
+        const sub = await prisma.subcategory.create({ data: { nome: args.nome.trim(), category_id: cat.id, ativo: true } });
+        return { ok: true, familia: fam.nome_familia, categoria: cat.nome, subcategoria: sub };
+      }
+      const sub = args.id
+        ? await prisma.subcategory.findFirst({ where: { id: args.id, category_id: cat.id } })
+        : await findSubcategory(cat.id, args.nome);
+      if (!sub) throw notFound('Subcategoria');
+      if (args.acao === 'excluir') {
+        await prisma.subcategory.update({ where: { id: sub.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, categoria: cat.nome, desativada: sub.nome };
+      }
+      const upd = await prisma.subcategory.update({
+        where: { id: sub.id },
+        data: { ...(args.novo_nome && { nome: args.novo_nome.trim() }) },
+      });
+      return { ok: true, familia: fam.nome_familia, categoria: cat.nome, subcategoria: upd };
+    },
+  },
+  {
+    name: 'gerenciar_cartao',
+    description: 'Cadastra, edita ou desativa um cartão de crédito pessoal (limite, bandeira, dia de fechamento e vencimento).',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      novo_nome: z.string().optional(),
+      bandeira: z.string().optional().describe('VISA, MASTERCARD, ELO, AMEX, HIPERCARD, OUTRO'),
+      ultimos_digitos: z.string().optional(),
+      limite: z.number().min(0).optional(),
+      dia_fechamento: z.number().int().min(1).max(31).optional(),
+      dia_vencimento: z.number().int().min(1).max(31).optional(),
+      cor: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome) throw badRequest('Informe nome do cartão');
+        const cc = await prisma.creditCard.create({
+          data: {
+            nome: args.nome.trim(),
+            bandeira: args.bandeira || 'VISA',
+            ultimos_digitos: args.ultimos_digitos || null,
+            limite: args.limite ?? 0,
+            dia_fechamento: args.dia_fechamento ?? 1,
+            dia_vencimento: args.dia_vencimento ?? 10,
+            cor: args.cor || '#6366F1',
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, cartao: cc };
+      }
+      const cc = args.id
+        ? await prisma.creditCard.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : await findCard(fam.id, args.nome);
+      if (!cc) throw notFound('Cartão de crédito');
+      if (args.acao === 'excluir') {
+        await prisma.creditCard.update({ where: { id: cc.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, desativado: cc.nome };
+      }
+      const upd = await prisma.creditCard.update({
+        where: { id: cc.id },
+        data: {
+          ...(args.novo_nome && { nome: args.novo_nome.trim() }),
+          ...(args.bandeira && { bandeira: args.bandeira }),
+          ...(args.ultimos_digitos !== undefined && { ultimos_digitos: args.ultimos_digitos }),
+          ...(args.limite !== undefined && { limite: args.limite }),
+          ...(args.dia_fechamento !== undefined && { dia_fechamento: args.dia_fechamento }),
+          ...(args.dia_vencimento !== undefined && { dia_vencimento: args.dia_vencimento }),
+          ...(args.cor && { cor: args.cor }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, cartao: upd };
+    },
+  },
+  {
+    name: 'fatura_cartao',
+    description: 'Detalha a fatura de um cartão de crédito em um mês (AAAA-MM): compras lançadas na competência da fatura, total e limite disponível.',
+    readOnly: true,
+    schema: {
+      cartao: z.string().min(1).describe('Nome ou ID do cartão'),
+      competencia: z.string().optional().describe('Mês AAAA-MM (padrão: mês atual)'),
+      familia: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const card = await findCard(fam.id, args.cartao);
+      if (!card) throw notFound('Cartão de crédito');
+      const comp = String(args.competencia || currentYm()).slice(0, 7);
+      const diaFech = card.dia_fechamento || 1;
+
+      const all = await prisma.expense.findMany({
+        where: { credit_card_id: card.id, is_fatura_cartao: false },
+        include: { category: { select: { nome: true } } },
+        orderBy: { data: 'desc' },
+      });
+      const itens = all.filter((e) => e.data && calcularCompetenciaFatura(e.data, diaFech) === comp);
+      const total_fatura = round2(itens.reduce((s, e) => s + (e.valor || 0), 0));
+      const limite = round2(card.limite || 0);
+      return {
+        familia: fam.nome_familia,
+        cartao: card.nome,
+        bandeira: card.bandeira,
+        dia_fechamento: diaFech,
+        dia_vencimento: card.dia_vencimento,
+        competencia: comp,
+        total_fatura,
+        limite,
+        limite_disponivel: limite > 0 ? round2(limite - total_fatura) : null,
+        lancamentos: itens.map((e) => ({ id: e.id, data: e.data, descricao: e.descricao, valor: round2(e.valor), categoria: e.category?.nome || null })),
+      };
+    },
+  },
+  {
+    name: 'listar_recorrentes',
+    description: 'Lista as contas fixas/recorrentes mensais cadastradas na família (aluguel, internet, escola, assinaturas).',
+    readOnly: true,
+    schema: {
+      familia: z.string().optional(),
+      incluir_inativas: z.boolean().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const rows = await prisma.recurringExpense.findMany({
+        where: { family_id: fam.id, ...(!args.incluir_inativas ? { ativo: true } : {}) },
+        orderBy: { dia_vencimento: 'asc' },
+      });
+      const cats = await prisma.category.findMany({ where: { family_id: fam.id }, select: { id: true, nome: true } });
+      const catMap = Object.fromEntries(cats.map((c) => [c.id, c.nome]));
+      const total_mensal = round2(rows.filter((r) => r.ativo).reduce((s, r) => s + (r.valor || 0), 0));
+      return {
+        familia: fam.nome_familia,
+        total_mensal,
+        itens: rows.map((r) => ({
+          id: r.id, descricao: r.descricao, valor: round2(r.valor), dia_vencimento: r.dia_vencimento,
+          categoria: catMap[r.category_id] || null, forma_pagamento: r.forma_pagamento, ativo: r.ativo,
+        })),
+      };
+    },
+  },
+  {
+    name: 'gerenciar_recorrente',
+    description: 'Cria, edita ou exclui uma despesa fixa recorrente da família.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      descricao: z.string().optional(),
+      valor: z.number().positive().optional(),
+      categoria: z.string().optional(),
+      subcategoria: z.string().optional(),
+      forma_pagamento: z.string().optional(),
+      dia_vencimento: z.number().int().min(1).max(31).optional(),
+      ativo: z.boolean().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.descricao || !args.valor || !args.categoria) throw badRequest('Informe descricao, valor e categoria');
+        const cat = await findCategory(fam.id, args.categoria, 'DESPESA');
+        if (!cat) throw badRequest(`Categoria "${args.categoria}" não encontrada na família "${fam.nome_familia}".`);
+        const sub = args.subcategoria ? await findSubcategory(cat.id, args.subcategoria) : null;
+        const rec = await prisma.recurringExpense.create({
+          data: {
+            descricao: args.descricao.trim(),
+            valor: round2(args.valor),
+            category_id: cat.id,
+            subcategory_id: sub?.id || null,
+            forma_pagamento: args.forma_pagamento || 'PIX',
+            dia_vencimento: args.dia_vencimento || 10,
+            ativo: args.ativo !== false,
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, recorrente: rec };
+      }
+      const existing = args.id
+        ? await prisma.recurringExpense.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.descricao ? await prisma.recurringExpense.findFirst({ where: { family_id: fam.id, descricao: { contains: args.descricao, mode: 'insensitive' } } }) : null);
+      if (!existing) throw notFound('Despesa recorrente');
+      if (args.acao === 'excluir') {
+        await prisma.recurringExpense.delete({ where: { id: existing.id } });
+        return { ok: true, familia: fam.nome_familia, excluida: existing.descricao };
+      }
+      const patch = {};
+      if (args.descricao !== undefined && args.id) patch.descricao = args.descricao.trim();
+      if (args.valor !== undefined) patch.valor = round2(args.valor);
+      if (args.forma_pagamento !== undefined) patch.forma_pagamento = args.forma_pagamento;
+      if (args.dia_vencimento !== undefined) patch.dia_vencimento = args.dia_vencimento;
+      if (args.ativo !== undefined) patch.ativo = args.ativo;
+      if (args.categoria) {
+        const cat = await findCategory(fam.id, args.categoria, 'DESPESA');
+        if (cat) patch.category_id = cat.id;
+      }
+      const upd = await prisma.recurringExpense.update({ where: { id: existing.id }, data: patch });
+      return { ok: true, familia: fam.nome_familia, recorrente: upd };
+    },
+  },
+  {
+    name: 'aplicar_recorrentes_mes',
+    description: 'Lança automaticamente no mês (AAAA-MM) todas as despesas fixas recorrentes ativas que ainda não foram lançadas nele.',
+    readOnly: false,
+    schema: {
+      competencia: z.string().optional().describe('Mês AAAA-MM (padrão: mês atual)'),
+      familia: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const comp = String(args.competencia || currentYm()).slice(0, 7);
+      const fm = await ensureMonth(fam.id, comp);
+      const [recs, existing] = await Promise.all([
+        prisma.recurringExpense.findMany({ where: { family_id: fam.id, ativo: true } }),
+        prisma.expense.findMany({ where: { month_id: fm.id } }),
+      ]);
+      const existingKeys = new Set(existing.map((e) => `${(e.descricao || '').toLowerCase()}::${round2(e.valor)}`));
+      const criadas = [];
+      for (const r of recs) {
+        const key = `${r.descricao.toLowerCase()}::${round2(r.valor)}`;
+        if (existingKeys.has(key)) continue;
+        const dia = String(Math.min(28, Math.max(1, r.dia_vencimento || 10))).padStart(2, '0');
+        const created = await prisma.expense.create({
+          data: {
+            descricao: r.descricao,
+            valor: round2(r.valor),
+            data: `${comp}-${dia}`,
+            forma_pagamento: r.forma_pagamento || 'PIX',
+            recorrente: true,
+            month_id: fm.id,
+            family_id: fam.id,
+            category_id: r.category_id,
+            subcategory_id: r.subcategory_id,
+          },
+        });
+        criadas.push({ id: created.id, descricao: created.descricao, valor: created.valor, data: created.data });
+      }
+      return { familia: fam.nome_familia, competencia: comp, quantidade_criada: criadas.length, criadas };
+    },
+  },
+  {
+    name: 'gerenciar_meta',
+    description: 'Cria, edita, registra aporte ou exclui uma meta financeira pessoal (reserva, viagem, carro, casa).',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'aportar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      novo_nome: z.string().optional(),
+      tipo: z.string().optional().describe('Ex.: RESERVA, VIAGEM, COMPRA, APOSENTADORIA'),
+      valor_alvo: z.number().positive().optional(),
+      valor_atual: z.number().min(0).optional(),
+      valor_aporte: z.number().positive().optional().describe('Valor a somar na meta (quando acao=aportar)'),
+      prazo: z.string().optional().describe('Data ou mês previsto (ex.: 2027-12-31)'),
+      descricao: z.string().optional(),
+      concluida: z.boolean().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome || !args.valor_alvo) throw badRequest('Informe nome e valor_alvo');
+        const g = await prisma.goal.create({
+          data: {
+            nome: args.nome.trim(),
+            tipo: args.tipo || 'RESERVA',
+            valor_alvo: round2(args.valor_alvo),
+            valor_atual: round2(args.valor_atual || 0),
+            prazo: args.prazo || null,
+            descricao: args.descricao || null,
+            concluida: round2(args.valor_atual || 0) >= round2(args.valor_alvo),
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, meta: g };
+      }
+      const goal = args.id
+        ? await prisma.goal.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.nome ? await prisma.goal.findFirst({ where: { family_id: fam.id, ativo: true, nome: { contains: args.nome, mode: 'insensitive' } } }) : null);
+      if (!goal) throw notFound('Meta');
+      if (args.acao === 'excluir') {
+        await prisma.goal.update({ where: { id: goal.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, removida: goal.nome };
+      }
+      if (args.acao === 'aportar') {
+        const aporte = round2(args.valor_aporte || args.valor_atual);
+        if (!(aporte > 0)) throw badRequest('Informe valor_aporte maior que zero');
+        const novo = round2((goal.valor_atual || 0) + aporte);
+        const upd = await prisma.goal.update({
+          where: { id: goal.id },
+          data: { valor_atual: novo, concluida: novo >= goal.valor_alvo },
+        });
+        return { ok: true, familia: fam.nome_familia, meta: upd };
+      }
+      const upd = await prisma.goal.update({
+        where: { id: goal.id },
+        data: {
+          ...(args.novo_nome && { nome: args.novo_nome.trim() }),
+          ...(args.tipo && { tipo: args.tipo }),
+          ...(args.valor_alvo !== undefined && { valor_alvo: round2(args.valor_alvo) }),
+          ...(args.valor_atual !== undefined && { valor_atual: round2(args.valor_atual) }),
+          ...(args.prazo !== undefined && { prazo: args.prazo }),
+          ...(args.descricao !== undefined && { descricao: args.descricao }),
+          ...(args.concluida !== undefined && { concluida: args.concluida }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, meta: upd };
+    },
+  },
+  {
+    name: 'gerenciar_divida',
+    description: 'Cadastra, edita ou exclui uma dívida/financiamento/empréstimo da família.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome_divida: z.string().optional(),
+      novo_nome: z.string().optional(),
+      credor: z.string().optional(),
+      tipo: z.string().optional().describe('Ex.: CARTAO, EMPRESTIMO, FINANCIAMENTO, OUTROS'),
+      saldo_inicial: z.number().min(0).optional(),
+      saldo_atual: z.number().min(0).optional(),
+      juros_mensal_percent: z.number().min(0).optional(),
+      data_inicio: z.string().optional(),
+      vencimento_dia: z.number().int().min(1).max(31).optional(),
+      status: z.enum(['ATIVA', 'QUITADA', 'RENEGOCIADA']).optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome_divida) throw badRequest('Informe nome_divida');
+        const ini = round2(args.saldo_inicial ?? args.saldo_atual ?? 0);
+        const atu = round2(args.saldo_atual ?? args.saldo_inicial ?? 0);
+        const d = await prisma.debt.create({
+          data: {
+            nome_divida: args.nome_divida.trim(),
+            credor: args.credor || null,
+            tipo: args.tipo || 'OUTROS',
+            saldo_inicial: ini,
+            saldo_atual: atu,
+            juros_mensal_percent: args.juros_mensal_percent ?? null,
+            data_inicio: args.data_inicio || todayYmd(),
+            vencimento_dia: args.vencimento_dia ?? null,
+            status: args.status || 'ATIVA',
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, divida: d };
+      }
+      const debt = args.id
+        ? await prisma.debt.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.nome_divida ? await prisma.debt.findFirst({ where: { family_id: fam.id, nome_divida: { contains: args.nome_divida, mode: 'insensitive' } } }) : null);
+      if (!debt) throw notFound('Dívida');
+      if (args.acao === 'excluir') {
+        await prisma.debt.delete({ where: { id: debt.id } });
+        return { ok: true, familia: fam.nome_familia, excluida: debt.nome_divida };
+      }
+      const upd = await prisma.debt.update({
+        where: { id: debt.id },
+        data: {
+          ...(args.novo_nome && { nome_divida: args.novo_nome.trim() }),
+          ...(args.credor !== undefined && { credor: args.credor }),
+          ...(args.tipo && { tipo: args.tipo }),
+          ...(args.saldo_inicial !== undefined && { saldo_inicial: round2(args.saldo_inicial) }),
+          ...(args.saldo_atual !== undefined && { saldo_atual: round2(args.saldo_atual) }),
+          ...(args.juros_mensal_percent !== undefined && { juros_mensal_percent: args.juros_mensal_percent }),
+          ...(args.vencimento_dia !== undefined && { vencimento_dia: args.vencimento_dia }),
+          ...(args.status && { status: args.status }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, divida: upd };
+    },
+  },
+  {
+    name: 'pagar_divida',
+    description: 'Registra pagamento/amortização de uma dívida, reduzindo o saldo devedor e opcionalmente lançando a saída como despesa do mês.',
+    readOnly: false,
+    schema: {
+      divida: z.string().min(1).describe('Nome ou ID da dívida'),
+      valor_pagamento: z.number().positive(),
+      data_pagamento: z.string().optional().describe('Data AAAA-MM-DD (padrão: hoje)'),
+      lancar_como_despesa: z.boolean().optional().describe('Padrão: true'),
+      forma_pagamento: z.string().optional(),
+      familia: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const q = String(args.divida).trim();
+      const debt = (await prisma.debt.findFirst({ where: { id: q, family_id: fam.id } }))
+        || (await prisma.debt.findFirst({ where: { family_id: fam.id, nome_divida: { contains: q, mode: 'insensitive' } } }));
+      if (!debt) throw notFound('Dívida');
+
+      const val = round2(args.valor_pagamento);
+      const dataStr = (args.data_pagamento || todayYmd()).slice(0, 10);
+      const novoSaldo = round2(Math.max(0, (debt.saldo_atual || 0) - val));
+      const novoStatus = novoSaldo <= 0 ? 'QUITADA' : debt.status;
+
+      let expenseId = null;
+      let monthId = null;
+      if (args.lancar_como_despesa !== false) {
+        const fm = await ensureMonth(fam.id, dataStr.slice(0, 7));
+        monthId = fm.id;
+        const cat = await findCategory(fam.id, 'Dívidas', 'DESPESA');
+        const exp = await prisma.expense.create({
+          data: {
+            descricao: `Pagamento dívida: ${debt.nome_divida}`,
+            valor: val,
+            data: dataStr,
+            forma_pagamento: args.forma_pagamento || 'PIX',
+            month_id: fm.id,
+            family_id: fam.id,
+            category_id: cat?.id || null,
+          },
+        });
+        expenseId = exp.id;
+      }
+
+      const [payment, upd] = await prisma.$transaction([
+        prisma.debtPayment.create({
+          data: { debt_id: debt.id, valor_pagamento: val, data_pagamento: dataStr, month_id: monthId },
+        }),
+        prisma.debt.update({
+          where: { id: debt.id },
+          data: { saldo_atual: novoSaldo, status: novoStatus },
+        }),
+      ]);
+
+      return { ok: true, familia: fam.nome_familia, divida: upd.nome_divida, pago: val, novo_saldo: upd.saldo_atual, status: upd.status, pagamento_id: payment.id, despesa_id: expenseId };
+    },
+  },
+  {
+    name: 'gerenciar_caixinha',
+    description: 'Cria, edita ou desativa uma caixinha de investimento pessoal (CDB, reserva, viagem). Para movimentar valor use lancar_caixinha.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      novo_nome: z.string().optional(),
+      objetivo: z.string().optional(),
+      valor_inicial: z.number().min(0).optional(),
+      tipo_rendimento: z.string().optional().describe('PERCENTUAL_MENSAL | CDI'),
+      taxa_mensal: z.number().min(0).optional(),
+      taxa_anual_cdi: z.number().min(0).optional(),
+      cor: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome) throw badRequest('Informe nome da caixinha');
+        const ini = round2(args.valor_inicial || 0);
+        const box = await prisma.investmentBox.create({
+          data: {
+            nome: args.nome.trim(),
+            objetivo: args.objetivo || null,
+            valor_inicial: ini,
+            saldo_atual: ini,
+            tipo_rendimento: args.tipo_rendimento || 'PERCENTUAL_MENSAL',
+            taxa_mensal: args.taxa_mensal ?? null,
+            taxa_anual_cdi: args.taxa_anual_cdi ?? null,
+            cor: args.cor || '#10B981',
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, caixinha: box };
+      }
+      const box = args.id
+        ? await prisma.investmentBox.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.nome ? await prisma.investmentBox.findFirst({ where: { family_id: fam.id, ativo: true, nome: { contains: args.nome, mode: 'insensitive' } } }) : null);
+      if (!box) throw notFound('Caixinha');
+      if (args.acao === 'excluir') {
+        await prisma.investmentBox.update({ where: { id: box.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, desativada: box.nome };
+      }
+      const upd = await prisma.investmentBox.update({
+        where: { id: box.id },
+        data: {
+          ...(args.novo_nome && { nome: args.novo_nome.trim() }),
+          ...(args.objetivo !== undefined && { objetivo: args.objetivo }),
+          ...(args.tipo_rendimento && { tipo_rendimento: args.tipo_rendimento }),
+          ...(args.taxa_mensal !== undefined && { taxa_mensal: args.taxa_mensal }),
+          ...(args.taxa_anual_cdi !== undefined && { taxa_anual_cdi: args.taxa_anual_cdi }),
+          ...(args.cor && { cor: args.cor }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, caixinha: upd };
+    },
+  },
+  {
+    name: 'listar_acoes_alertas',
+    description: 'Lista a carteira de ações/FIIs/BDRs/ETFs da família (com rentabilidade calculada) e os alertas de preço configurados.',
+    readOnly: true,
+    schema: { familia: z.string().optional() },
+    handler: async (ctx, { familia }) => {
+      const fam = await resolveFamily(ctx, familia);
+      const [stocks, alerts] = await Promise.all([
+        prisma.stockInvestment.findMany({ where: { family_id: fam.id, ativo: true }, orderBy: { ticker: 'asc' } }),
+        prisma.stockAlert.findMany({ where: { family_id: fam.id, is_active: true }, orderBy: { ticker: 'asc' } }),
+      ]);
+      const posicoes = stocks.map((s) => {
+        const investido = round2(s.quantidade * s.preco_medio);
+        const atualUnit = s.preco_atual ?? s.preco_medio;
+        const atual = round2(s.quantidade * atualUnit);
+        const resultado = round2(atual - investido);
+        return {
+          id: s.id,
+          ticker: s.ticker,
+          nome_empresa: s.nome_empresa,
+          tipo: s.tipo,
+          setor: s.setor,
+          quantidade: s.quantidade,
+          preco_medio: round2(s.preco_medio),
+          preco_atual: round2(atualUnit),
+          valor_investido: investido,
+          valor_atual: atual,
+          resultado,
+          rentabilidade_percent: investido > 0 ? round2((resultado / investido) * 100) : 0,
+        };
+      });
+      const total_investido = round2(posicoes.reduce((s, p) => s + p.valor_investido, 0));
+      const total_atual = round2(posicoes.reduce((s, p) => s + p.valor_atual, 0));
+      return {
+        familia: fam.nome_familia,
+        resumo: {
+          total_investido,
+          total_atual,
+          resultado: round2(total_atual - total_investido),
+          rentabilidade_percent: total_investido > 0 ? round2(((total_atual - total_investido) / total_investido) * 100) : 0,
+        },
+        posicoes,
+        alertas: alerts,
+      };
+    },
+  },
+  {
+    name: 'gerenciar_acao',
+    description: 'Cadastra, atualiza (quantidade, preço médio/atual) ou remove uma posição na carteira de ações/FIIs.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      ticker: z.string().optional().describe('Ex.: PETR4, ITUB4, MXRF11'),
+      nome_empresa: z.string().optional(),
+      tipo: z.string().optional().describe('ACAO | FII | ETF | BDR'),
+      quantidade: z.number().positive().optional(),
+      preco_medio: z.number().positive().optional(),
+      preco_atual: z.number().positive().optional(),
+      data_primeira_compra: z.string().optional(),
+      setor: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const ticker = args.ticker ? String(args.ticker).trim().toUpperCase() : null;
+      if (args.acao === 'criar') {
+        if (!ticker || !args.quantidade || !args.preco_medio) throw badRequest('Informe ticker, quantidade e preco_medio');
+        const stock = await prisma.stockInvestment.create({
+          data: {
+            ticker,
+            nome_empresa: args.nome_empresa || null,
+            tipo: args.tipo || 'ACAO',
+            quantidade: args.quantidade,
+            preco_medio: round2(args.preco_medio),
+            preco_atual: args.preco_atual ? round2(args.preco_atual) : round2(args.preco_medio),
+            data_primeira_compra: args.data_primeira_compra || todayYmd(),
+            setor: args.setor || null,
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, ativo: stock };
+      }
+      const stock = args.id
+        ? await prisma.stockInvestment.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (ticker ? await prisma.stockInvestment.findFirst({ where: { family_id: fam.id, ativo: true, ticker } }) : null);
+      if (!stock) throw notFound('Ativo na carteira');
+      if (args.acao === 'excluir') {
+        await prisma.stockInvestment.update({ where: { id: stock.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, removido: stock.ticker };
+      }
+      const upd = await prisma.stockInvestment.update({
+        where: { id: stock.id },
+        data: {
+          ...(args.nome_empresa !== undefined && { nome_empresa: args.nome_empresa }),
+          ...(args.tipo && { tipo: args.tipo }),
+          ...(args.quantidade !== undefined && { quantidade: args.quantidade }),
+          ...(args.preco_medio !== undefined && { preco_medio: round2(args.preco_medio) }),
+          ...(args.preco_atual !== undefined && { preco_atual: round2(args.preco_atual) }),
+          ...(args.setor !== undefined && { setor: args.setor }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, ativo: upd };
+    },
+  },
+  {
+    name: 'gerenciar_alerta_acao',
+    description: 'Cria ou remove um alerta de preço-alvo (PISO ou TETO) para uma ação/FII.',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      ticker: z.string().optional(),
+      target_price: z.number().positive().optional(),
+      alert_type: z.enum(['PISO', 'TETO']).optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.ticker || !args.target_price || !args.alert_type) throw badRequest('Informe ticker, target_price e alert_type (PISO ou TETO)');
+        const al = await prisma.stockAlert.create({
+          data: { ticker: args.ticker.trim().toUpperCase(), target_price: round2(args.target_price), alert_type: args.alert_type, family_id: fam.id },
+        });
+        return { ok: true, familia: fam.nome_familia, alerta: al };
+      }
+      const al = args.id
+        ? await prisma.stockAlert.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.ticker ? await prisma.stockAlert.findFirst({ where: { family_id: fam.id, is_active: true, ticker: args.ticker.trim().toUpperCase() } }) : null);
+      if (!al) throw notFound('Alerta de preço');
+      await prisma.stockAlert.update({ where: { id: al.id }, data: { is_active: false } });
+      return { ok: true, familia: fam.nome_familia, desativado: al.ticker };
+    },
+  },
+  {
+    name: 'gerenciar_patrimonio',
+    description: 'Cadastra, edita ou remove um bem do patrimônio familiar (imóvel, veículo, terreno, herança).',
+    readOnly: false,
+    schema: {
+      acao: z.enum(['criar', 'editar', 'excluir']),
+      familia: z.string().optional(),
+      id: z.string().optional(),
+      nome: z.string().optional(),
+      novo_nome: z.string().optional(),
+      tipo: z.enum(['IMOVEL', 'VEICULO', 'TERRENO', 'HERANCA', 'OUTROS']).optional(),
+      valor: z.number().min(0).optional(),
+      descricao: z.string().optional(),
+      data_aquisicao: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      if (args.acao === 'criar') {
+        if (!args.nome || args.valor === undefined) throw badRequest('Informe nome e valor do bem');
+        const asset = await prisma.asset.create({
+          data: {
+            nome: args.nome.trim(),
+            tipo: args.tipo || 'OUTROS',
+            valor: round2(args.valor),
+            descricao: args.descricao || null,
+            data_aquisicao: args.data_aquisicao || null,
+            family_id: fam.id,
+          },
+        });
+        return { ok: true, familia: fam.nome_familia, bem: asset };
+      }
+      const asset = args.id
+        ? await prisma.asset.findFirst({ where: { id: args.id, family_id: fam.id } })
+        : (args.nome ? await prisma.asset.findFirst({ where: { family_id: fam.id, ativo: true, nome: { contains: args.nome, mode: 'insensitive' } } }) : null);
+      if (!asset) throw notFound('Bem patrimonial');
+      if (args.acao === 'excluir') {
+        await prisma.asset.update({ where: { id: asset.id }, data: { ativo: false } });
+        return { ok: true, familia: fam.nome_familia, removido: asset.nome };
+      }
+      const upd = await prisma.asset.update({
+        where: { id: asset.id },
+        data: {
+          ...(args.novo_nome && { nome: args.novo_nome.trim() }),
+          ...(args.tipo && { tipo: args.tipo }),
+          ...(args.valor !== undefined && { valor: round2(args.valor) }),
+          ...(args.descricao !== undefined && { descricao: args.descricao }),
+          ...(args.data_aquisicao !== undefined && { data_aquisicao: args.data_aquisicao }),
+        },
+      });
+      return { ok: true, familia: fam.nome_familia, bem: upd };
+    },
+  },
+  {
+    name: 'evolucao_financeira',
+    description: 'Retorna a evolução mês a mês (receitas, despesas, saldo, taxa de poupança) e o patrimônio líquido consolidado (bens + caixinhas + ações − dívidas).',
+    readOnly: true,
+    schema: {
+      meses: z.number().int().min(1).max(24).optional().describe('Quantidade de meses (padrão: 6)'),
+      familia: z.string().optional(),
+    },
+    handler: async (ctx, args) => {
+      const fam = await resolveFamily(ctx, args.familia);
+      const limit = Math.min(24, Math.max(1, args.meses || 6));
+      const [months, assets, boxes, stocks, debts] = await Promise.all([
+        prisma.financialMonth.findMany({
+          where: { family_id: fam.id },
+          orderBy: { competencia: 'desc' },
+          take: limit,
+          include: {
+            incomes: { where: { ativo: true }, select: { valor: true } },
+            expenses: { select: { valor: true, credit_card_id: true, is_fatura_cartao: true } },
+          },
+        }),
+        prisma.asset.findMany({ where: { family_id: fam.id, ativo: true }, select: { valor: true } }),
+        prisma.investmentBox.findMany({ where: { family_id: fam.id, ativo: true }, select: { saldo_atual: true } }),
+        prisma.stockInvestment.findMany({ where: { family_id: fam.id, ativo: true }, select: { quantidade: true, preco_medio: true, preco_atual: true } }),
+        prisma.debt.findMany({ where: { family_id: fam.id, status: 'ATIVA' }, select: { saldo_atual: true } }),
+      ]);
+
+      const serie = months
+        .slice()
+        .reverse()
+        .map((m) => {
+          const rec = round2(m.incomes.reduce((s, i) => s + (i.valor || 0), 0));
+          const desp = round2(m.expenses.filter((e) => !e.credit_card_id || e.is_fatura_cartao).reduce((s, e) => s + (e.valor || 0), 0));
+          const saldo = round2(rec - desp);
+          return {
+            competencia: m.competencia,
+            receitas: rec,
+            despesas: desp,
+            saldo,
+            taxa_poupanca_percent: rec > 0 ? round2((saldo / rec) * 100) : 0,
+          };
+        });
+
+      const total_bens = round2(assets.reduce((s, a) => s + (a.valor || 0), 0));
+      const total_caixinhas = round2(boxes.reduce((s, b) => s + (b.saldo_atual || 0), 0));
+      const total_acoes = round2(stocks.reduce((s, x) => s + x.quantidade * (x.preco_atual ?? x.preco_medio), 0));
+      const total_dividas = round2(debts.reduce((s, d) => s + (d.saldo_atual || 0), 0));
+      const patrimonio_liquido = round2(total_bens + total_caixinhas + total_acoes - total_dividas);
+
+      return {
+        familia: fam.nome_familia,
+        patrimonio: { total_bens, total_caixinhas, total_acoes, total_dividas, patrimonio_liquido },
+        serie,
+      };
     },
   },
 ];
