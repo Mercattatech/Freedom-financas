@@ -44,6 +44,10 @@ app.use('/api/webhooks/whatsapp', require('./routes/whatsapp'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/assistant', require('./routes/assistant'));
 
+// Módulo Freedom Pessoal MCP (tokens fpk_... isolados por usuário/família)
+// Precisa vir antes do router genérico, que captura /api/:entity
+app.use('/api/personal', require('./personal/routes'));
+
 // Módulo Freedom Empresas (financeiro empresarial multiempresa + Asaas + MCP)
 // Precisa vir antes do router genérico, que captura /api/:entity
 const { createBizRouter } = require('./business/routes');

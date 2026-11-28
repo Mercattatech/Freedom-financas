@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Plus, X, Check, Search, Users, Building2, Phone, Trash2, KeyRound, Lock, Unlock, Copy, ShieldCheck, UserCog } from 'lucide-react';
+import { Loader2, Plus, X, Check, Search, Users, Building2, Phone, Trash2, KeyRound, Lock, Unlock, Copy, ShieldCheck, UserCog, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 
 async function api(path, opts = {}) {
@@ -88,10 +88,27 @@ function PersonalRow({ u }) {
   const qc = useQueryClient();
   const [phone, setPhone] = useState({ phone: '', name: '' });
   const [open, setOpen] = useState(false);
+  const [createdMcp, setCreatedMcp] = useState(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['adm-pessoal'] });
   const upd = useMutation({ mutationFn: (body) => api(`/pessoal/${u.id}`, { method: 'PUT', body }), onSuccess: () => { toast.success('Atualizado'); refresh(); }, onError: (e) => toast.error(e.message) });
   const addPhone = useMutation({ mutationFn: () => api(`/pessoal/${u.id}/whatsapps`, { method: 'POST', body: phone }), onSuccess: () => { toast.success('Número liberado'); setPhone({ phone: '', name: '' }); refresh(); }, onError: (e) => toast.error(e.message) });
   const delPhone = useMutation({ mutationFn: (pid) => api(`/pessoal/${u.id}/whatsapps/${pid}`, { method: 'DELETE' }), onSuccess: () => { toast.success('Número removido'); refresh(); }, onError: (e) => toast.error(e.message) });
+  const mcpQ = useQuery({ queryKey: ['adm-pessoal-mcp', u.id], queryFn: () => api(`/pessoal/${u.id}/mcp-keys`), enabled: open });
+  const createMcp = useMutation({
+    mutationFn: (body = {}) => api(`/pessoal/${u.id}/mcp-keys`, { method: 'POST', body: { nome: 'ChatGPT Pessoal', escopo: 'COMPLETO', ...body } }),
+    onSuccess: (r) => {
+      setCreatedMcp(r);
+      navigator.clipboard?.writeText(r.mcp_url_com_token).catch(() => {});
+      toast.success(`Link MCP criado e copiado para ${u.email}!`, { duration: 10000 });
+      qc.invalidateQueries({ queryKey: ['adm-pessoal-mcp', u.id] });
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const revokeMcp = useMutation({
+    mutationFn: (keyId) => api(`/pessoal/${u.id}/mcp-keys/${keyId}`, { method: 'DELETE' }),
+    onSuccess: () => { toast.success('Chave MCP revogada'); qc.invalidateQueries({ queryKey: ['adm-pessoal-mcp', u.id] }); },
+    onError: (e) => toast.error(e.message),
+  });
   const phones = [...(u.whatsapp_phone ? [{ id: 'principal', phone: u.whatsapp_phone, name: 'Principal' }] : []), ...u.whatsappAllowedPhones];
   return (
     <Card className={`p-5 ${u.disabled ? 'opacity-60' : ''}`}>
@@ -137,6 +154,48 @@ function PersonalRow({ u }) {
               <div><Label>Limite de WhatsApps</Label><Input type="number" min="1" defaultValue={u.limite_numeros_whatsapp} onBlur={(e) => Number(e.target.value) !== u.limite_numeros_whatsapp && upd.mutate({ limite_numeros_whatsapp: Number(e.target.value) })} className={inputCls} /></div>
             </div>
             <Button size="sm" variant="outline" className="border-slate-700 text-slate-300 hover:bg-slate-800" onClick={() => { const s = prompt('Nova senha provisória (mín. 6 caracteres):'); if (s && s.length >= 6) upd.mutate({ password: s }, { onSuccess: () => showCredentials(u.email, s) }); }}><KeyRound className="w-4 h-4 mr-1" />Redefinir senha</Button>
+          </div>
+          <div className="md:col-span-2 pt-4 border-t border-slate-800 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-bold text-slate-200 flex items-center gap-2"><Bot className="w-4 h-4 text-indigo-400" />MCP Pessoal (ChatGPT / Claude)</p>
+              <Button type="button" size="sm" disabled={createMcp.isPending} onClick={() => createMcp.mutate({})} className="bg-indigo-600 hover:bg-indigo-500 text-white">
+                {createMcp.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}Gerar link MCP
+              </Button>
+            </div>
+            {createdMcp && (
+              <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-300">Link MCP gerado (copie agora):</span>
+                  <button type="button" onClick={() => setCreatedMcp(null)} className="text-slate-400 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                </div>
+                <div className="flex gap-2">
+                  <Input readOnly value={createdMcp.mcp_url_com_token} className={`${inputCls} font-mono text-xs h-8`} />
+                  <Button type="button" size="sm" className="bg-emerald-600 hover:bg-emerald-500 h-8" onClick={() => { navigator.clipboard?.writeText(createdMcp.mcp_url_com_token); toast.success('Link copiado!'); }}><Copy className="w-3.5 h-3.5 mr-1" />Copiar</Button>
+                </div>
+                <p className="text-slate-400">Token isolado: <code className="text-slate-200 font-mono">{createdMcp.chave}</code></p>
+              </div>
+            )}
+            {mcpQ.isLoading ? (
+              <p className="text-xs text-slate-500">Carregando tokens MCP…</p>
+            ) : !(mcpQ.data?.items?.length) ? (
+              <p className="text-xs text-slate-500">Nenhum token MCP pessoal criado para este cliente.</p>
+            ) : (
+              <div className="space-y-2">
+                {mcpQ.data.items.map((k) => (
+                  <div key={k.id} className={`flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2 text-xs ${k.revogada ? 'opacity-50' : ''}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-white font-semibold">{k.nome}</span>
+                      <code className="text-slate-400 font-mono">{k.prefixo}…</code>
+                      <span className={`px-1.5 py-0.5 rounded ${k.revogada ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}`}>{k.revogada ? 'Revogada' : 'Ativa'}</span>
+                      {k.family_nome && <span className="text-indigo-300">🏠 {k.family_nome}</span>}
+                    </div>
+                    {!k.revogada && (
+                      <button type="button" onClick={() => confirm('Revogar este token MCP?') && revokeMcp.mutate(k.id)} className="text-slate-500 hover:text-red-400" title="Revogar token"><Trash2 className="w-4 h-4" /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

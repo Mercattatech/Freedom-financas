@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const { authenticateToken } = require('../middleware/auth');
 const companies = require('../business/services/companies');
+const personalKeys = require('../personal/apiKeys');
+
+const baseUrl = (req) => process.env.APP_URL || req.headers.origin || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -195,6 +198,29 @@ router.delete('/pessoal/:id/whatsapps/:phoneId', ah(async (req, res) => {
     await prisma.whatsappAllowedPhone.deleteMany({ where: { id: req.params.phoneId, user_id: req.params.id } });
   }
   res.json({ ok: true });
+}));
+
+router.get('/pessoal/:id/mcp-keys', ah(async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true } });
+  if (!user) throw err(404, 'Cliente não encontrado');
+  const items = await personalKeys.list(user.id);
+  res.json({ mcp_url: `${baseUrl(req)}/api/personal/mcp`, items });
+}));
+
+router.post('/pessoal/:id/mcp-keys', ah(async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+  if (!user) throw err(404, 'Cliente não encontrado');
+  const created = await personalKeys.create(user, req.body || {});
+  const mcpUrl = `${baseUrl(req)}/api/personal/mcp`;
+  res.status(201).json({
+    ...created,
+    mcp_url: mcpUrl,
+    mcp_url_com_token: `${mcpUrl}?token=${created.chave}`,
+  });
+}));
+
+router.delete('/pessoal/:id/mcp-keys/:keyId', ah(async (req, res) => {
+  res.json(await personalKeys.revoke(req.params.id, req.params.keyId));
 }));
 
 // ───────────────────────── EMPRESARIAL ─────────────────────────
